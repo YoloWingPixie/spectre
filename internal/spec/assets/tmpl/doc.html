@@ -1,0 +1,6 @@
+{{define "content"}}
+<h1>{{.Title}} <span class="muted small">({{.Page.Num}} of {{.N}})</span></h1>
+<details class="toc"><summary>All pages</summary><ol>{{range .Pages}}<li>{{if eq .Num $.Page.Num}}<b>{{.Label}}</b>{{else}}<a href="{{$.Base}}/{{.Num}}">{{.Label}}</a>{{end}}</li>{{end}}</ol></details>
+{{range .Blocks}}{{if .Card}}{{template "card" .Card}}{{else}}<section class="sec">{{.HTML}}</section>{{end}}{{end}}
+<nav class="pager">{{if .Prev}}<a href="{{.Base}}/{{.Prev.Num}}">← {{.Prev.Label}}</a>{{else}}<span></span>{{end}}{{if .Next}}<a href="{{.Base}}/{{.Next.Num}}">{{.Next.Label}} →</a>{{else}}<span></span>{{end}}</nav>
+{{end}}

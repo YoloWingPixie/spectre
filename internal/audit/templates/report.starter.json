@@ -1,0 +1,131 @@
+{
+  "$schema": "../schema/report.schema.json",
+  "title": "Project Audit",
+  "project": "your-project",
+  "repoRoot": "/mnt/c/git/your-project",
+  "wslDistro": "Ubuntu",
+  "commit": "abc1234",
+  "branch": "main",
+  "date": "2026-01-01",
+  "scope": "What you looked at and what you left out. Example: security and data handling in `src/`, read-only, no live testing.",
+  "areas": [
+    {
+      "key": "sec",
+      "name": "Security & data"
+    }
+  ],
+  "findings": [
+    {
+      "id": "SEC-01",
+      "area": "sec",
+      "severity": "high",
+      "status": "open",
+      "title": "Password reset links never expire",
+      "summary": "A reset link works forever once it is sent. Anyone who finds an old email can take over that account.",
+      "location": {
+        "path": "src/auth/reset.ts",
+        "line": 42,
+        "endLine": 58
+      },
+      "evidence": [
+        {
+          "type": "file",
+          "path": "src/auth/reset.ts",
+          "line": 47,
+          "excerpt": "const token = await db.resetTokens.find({ value });\nif (!token) throw new NotFound();",
+          "note": "The lookup checks that the token exists. It never checks `createdAt`."
+        },
+        {
+          "type": "command",
+          "command": "grep -rn \"expiresAt\" src/auth",
+          "output": "",
+          "note": "No code in the auth folder reads an expiry time."
+        }
+      ],
+      "current": {
+        "description": "Reset tokens are random 32-byte values stored in the `reset_tokens` table. A token is deleted when it is used. Nothing else removes it.",
+        "pros": [
+          "Tokens are long and random, so nobody can guess one.",
+          "Users who open the email days later can still reset."
+        ],
+        "cons": [
+          "An old email in a leaked or shared mailbox still unlocks the account.",
+          "The table grows forever because unused tokens are never removed."
+        ]
+      },
+      "coas": [
+        {
+          "id": "expire-one-hour",
+          "name": "Expire tokens after one hour",
+          "description": "Store `expiresAt` with each token and reject it after that time. Delete expired rows in the nightly job.",
+          "pros": [
+            "Closes the takeover path for old emails.",
+            "Small change in one file plus one migration."
+          ],
+          "cons": [
+            "Users who wait more than an hour must ask for a new link."
+          ],
+          "effort": "S",
+          "risk": "low",
+          "touches": [
+            "src/auth/reset.ts:42-58",
+            "src/jobs/nightly.ts"
+          ],
+          "recommended": true,
+          "recommendedReason": "It removes the risk for a tiny cost, and one hour matches what most sites do."
+        },
+        {
+          "id": "expire-on-change",
+          "name": "Expire tokens when the password changes",
+          "description": "Delete every open reset token for a user when their password changes by any route.",
+          "pros": [
+            "No time limit for users."
+          ],
+          "cons": [
+            "A leaked link still works until the user happens to change the password."
+          ],
+          "effort": "S",
+          "risk": "low",
+          "touches": [
+            "src/auth/password.ts"
+          ]
+        },
+        {
+          "id": "do-nothing",
+          "name": "Do nothing",
+          "description": "Accept the risk and note it in the security docs.",
+          "pros": [
+            "No work."
+          ],
+          "cons": [
+            "The takeover path stays open."
+          ],
+          "effort": "S",
+          "risk": "high"
+        }
+      ],
+      "tags": [
+        "verified"
+      ]
+    }
+  ],
+  "fixFirst": [
+    {
+      "id": "SEC-01",
+      "why": "Anyone with an old reset email can take over the account."
+    }
+  ],
+  "openQuestions": [
+    {
+      "findingId": "SEC-01",
+      "text": "Is one hour too short for users who read email on another device?"
+    }
+  ],
+  "clean": [
+    {
+      "area": "sec",
+      "text": "Session cookies are `HttpOnly`, `Secure` and `SameSite=Lax`."
+    }
+  ],
+  "notes": "Say where your notes are and anything you could not check."
+}

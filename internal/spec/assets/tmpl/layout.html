@@ -1,0 +1,62 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<script>{{themeScript}}</script>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+{{template "app-header" .Header}}
+<div class="mode-nav"><div class="app-nav">
+<nav>
+<a href="/req"{{if eq .Nav "req"}} class="on"{{end}}>Requirements</a>
+<a href="/design/1"{{if eq .Nav "design"}} class="on"{{end}}>Design</a>
+<a href="/scenarios/1"{{if eq .Nav "scenarios"}} class="on"{{end}}>Scenarios</a>
+<a href="/tasks/1"{{if eq .Nav "tasks"}} class="on"{{end}}>Tasks</a>
+<a href="/od"{{if eq .Nav "od"}} class="on"{{end}}>Decisions</a>
+</nav>
+<span class="sp"></span>
+<form action="/search" method="get" role="search"><input type="search" name="q" value="{{.Q}}" placeholder="Search" aria-label="Search"></form>
+</div></div>
+<main>
+{{template "content" .Data}}
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>
+{{end}}
+
+{{define "verdict"}}{{if .}}<span class="chip v-{{lower .}}">{{verdictLabel .}}</span>{{else}}<span class="chip v-none">unreviewed</span>{{end}}{{end}}
+
+{{define "chips"}}
+{{if .It.Pri}}<span class="chip p-{{lower .It.Pri}}">{{.It.Pri}}</span>{{end}}
+{{if .It.StatusText}}<span class="chip s-{{.It.Status}}">{{.StatusHTML}}</span>{{end}}
+{{if .Answered}}<span class="chip s-answered">answered (pending fold-in)</span>{{end}}
+{{range .It.Milestones}}<span class="chip ms">{{.}}</span>{{end}}
+{{end}}
+
+{{define "entries"}}{{if .}}<ul class="hist">{{range .}}<li>{{if .Verdict}}<span class="chip v-{{lower .Verdict}}">{{verdictLabel .Verdict}}</span> {{end}}<span class="muted small">{{.Time}}</span>{{range .Lines}}<div><span class="muted">{{.Name}}:</span> <span class="t">{{.HTML}}</span></div>{{end}}</li>{{end}}</ul>{{end}}{{end}}
+
+{{define "fbform"}}<form class="fb" method="post" action="/feedback">
+<input type="hidden" name="id" value="{{.It.ID}}"><input type="hidden" name="back" value="{{.Back}}">
+<input type="text" name="text" placeholder="Feedback (optional)" aria-label="Feedback on {{.It.ID}}" maxlength="20000">
+<button name="verdict" value="Accept" class="v-accept">Accept</button>
+<button name="verdict" value="Change" class="v-change">Change</button>
+<button name="verdict" value="Reject" class="v-reject">Reject</button>
+<button name="verdict" value="Question" class="v-question">Question</button>
+</form>{{end}}
+
+{{define "card"}}<article class="card{{if .Full}} full{{end}}" id="{{.It.ID}}">
+<div class="ch"><a class="rid" href="/id/{{.It.ID}}">{{.It.ID}}</a>{{template "chips" .}}<span class="sp"></span>{{template "verdict" .Verdict}}</div>
+<h3>{{.It.Title}}</h3>
+{{if .EARS}}<p class="ears">{{.EARS}}</p>{{end}}
+{{if .Accept}}<div class="lbl">Acceptance</div><div class="fv">{{.Accept}}</div>{{end}}
+{{if .Body}}<div class="fv">{{.Body}}</div>{{end}}
+{{if .Meta}}<dl class="meta">{{range .Meta}}<dt>{{.Name}}</dt><dd>{{.HTML}}</dd>{{end}}</dl>{{end}}
+{{if .Feedback}}<div class="lbl">Feedback</div>{{template "entries" .Feedback}}{{end}}
+{{if .Comments}}<div class="lbl">Comments</div>{{template "entries" .Comments}}{{end}}
+{{if .FormOpen}}{{template "fbform" .}}{{else}}<details class="more"><summary>Feedback</summary>{{template "fbform" .}}</details>{{end}}
+{{if not .Full}}<div class="small" style="margin-top:6px"><a href="/id/{{.It.ID}}">Comment / details</a>{{if .NextURL}} · <a href="{{.NextURL}}">Next unreviewed →</a>{{end}}</div>{{end}}
+</article>{{end}}

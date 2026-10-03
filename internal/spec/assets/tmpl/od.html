@@ -1,0 +1,9 @@
+{{define "content"}}
+<h1>{{.Title}}</h1>
+<div class="flt small">Show:
+{{range .States}}{{if eq .Value $.State}}<b>{{.Label}}</b>{{else}}<a href="/od{{if .Value}}?state={{.Value}}{{end}}">{{.Label}}</a>{{end}} ({{.N}}) {{end}}</div>
+<details class="toc"><summary>About</summary>{{.Intro}}</details>
+{{range .Rows}}<div class="res" id="{{.It.ID}}"><div class="ch"><a href="/id/{{.It.ID}}"><b>{{.It.ID}}</b></a> {{.It.Title}} {{template "chips" .}}</div>
+<div class="snip">{{if .Rec}}Recommendation: {{.Rec}}{{end}}</div></div>{{end}}
+{{if not .Rows}}<p class="muted">None.</p>{{end}}
+{{end}}

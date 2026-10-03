@@ -1,0 +1,579 @@
+{
+  "$schema": "../schema/report.schema.json",
+  "title": "Flightline Codebase Audit",
+  "project": "flightline",
+  "repoRoot": "/mnt/c/git/vcsg8/flightline",
+  "wslDistro": "DevContainer",
+  "commit": "dcebf31",
+  "branch": "main",
+  "date": "2026-09-26",
+  "scope": "Worked example with four findings taken from the full audit. The audit was read-only. It covered security and data, logic and errors, and a live walkthrough of the UI on the seeded CSG-8 tenant.",
+  "areas": [
+    {
+      "key": "sec",
+      "name": "Security & data"
+    },
+    {
+      "key": "log",
+      "name": "Logic & errors"
+    },
+    {
+      "key": "ux",
+      "name": "UX/UI live"
+    }
+  ],
+  "findings": [
+    {
+      "id": "SEC-03",
+      "area": "sec",
+      "severity": "high",
+      "status": "fixed",
+      "statusNote": "Fixed: unique index migration 0114 + Manage Server proof.",
+      "title": "Any tenant could claim any Discord server (guild) ID",
+      "summary": "A tenant admin could type in the ID of a Discord server they do not run. The shared bot then showed that server's members and emoji to the wrong tenant.",
+      "location": {
+        "path": "src/core/auth/social-provider-service.ts",
+        "line": 184,
+        "endLine": 218
+      },
+      "relatedIds": [
+        "LOG-01"
+      ],
+      "evidence": [
+        {
+          "type": "file",
+          "path": "drizzle/0114_discord_guild_single_tenant.sql",
+          "line": 23,
+          "excerpt": "CREATE UNIQUE INDEX \"social_provider_configurations_provider_guild_unique\"\n  ON \"social_provider_configurations\"\n  USING btree (\"provider\", (\"configuration\" ->> 'guildId'))\n  WHERE (\"configuration\" ->> 'guildId') IS NOT NULL;",
+          "note": "The fix: one Discord server can now belong to only one tenant."
+        },
+        {
+          "type": "file",
+          "path": "drizzle/0114_discord_guild_single_tenant.sql",
+          "line": 1,
+          "endLine": 21,
+          "note": "If two tenants already share a server, the migration stops with an error. It does not pick a winner on its own."
+        },
+        {
+          "type": "file",
+          "path": "src/core/auth/social-provider-service.ts",
+          "line": 209,
+          "endLine": 218,
+          "excerpt": "if (\n  directoryId &&\n  directoryChanged &&\n  provider.verifyDirectoryManager &&\n  (proof?.provider !== input.provider || ...)\n) {\n  throw new PolicyError(\"Confirm that you manage this directory before connecting it.\");\n}",
+          "note": "Saving a new server ID now needs a matching proof from the same user."
+        },
+        {
+          "type": "file",
+          "path": "src/core/auth/discord-self-registration.ts",
+          "line": 100,
+          "endLine": 116,
+          "note": "The proof asks Discord for the user's servers. The user must own the server or hold Manage Server or Administrator."
+        },
+        {
+          "type": "file",
+          "path": "src/core/auth/social-provider-guild-binding.test.ts",
+          "line": 547,
+          "note": "Test: a server already bound to another tenant is rejected, even if that binding is disabled."
+        }
+      ],
+      "current": {
+        "description": "At the audit commit `dcebf31`, `saveSocialProviderConfiguration` stored any well-formed server ID. There was no proof of control and no uniqueness rule. One bot token is shared by every tenant.",
+        "pros": [
+          "Setup was one form field, so a new tenant could connect Discord in a minute.",
+          "One shared bot is simpler to run than one bot per tenant."
+        ],
+        "cons": [
+          "Tenant B could list up to 25,000 members of tenant A's server, with user names and nicknames.",
+          "Tenant B could import tenant A's custom emoji.",
+          "New sign-ins from tenant A's server silently got an account in tenant B too (migration 0113).",
+          "The Test Connection button told anyone which servers the bot had joined."
+        ]
+      },
+      "coas": [
+        {
+          "id": "platform-admin-binds",
+          "name": "Only the platform admin can bind a server",
+          "description": "Remove the server ID field from tenant settings. The platform admin sets it for each tenant by hand after checking ownership.",
+          "pros": [
+            "No Discord code changes.",
+            "A person checks every binding."
+          ],
+          "cons": [
+            "Every new tenant waits for the platform admin.",
+            "The check is manual, so it can be skipped or done wrong."
+          ],
+          "effort": "S",
+          "risk": "low",
+          "touches": [
+            "src/core/auth/social-provider-service.ts:52-103"
+          ]
+        },
+        {
+          "id": "manage-server-proof",
+          "name": "Prove Manage Server through Discord sign-in",
+          "description": "Ask Discord which servers the signed-in admin can manage. Only allow a server they own or hold Manage Server on. Add a unique index so one server maps to one tenant.",
+          "pros": [
+            "Tenants still set up Discord on their own.",
+            "Discord itself confirms who runs the server.",
+            "The database blocks two tenants from sharing a server, even if the code has a bug."
+          ],
+          "cons": [
+            "The admin must have linked their Discord account first.",
+            "Adds a call to Discord and token refresh handling.",
+            "Needs a migration that fails if old data already has duplicates."
+          ],
+          "effort": "M",
+          "risk": "low",
+          "touches": [
+            "src/core/auth/social-provider-service.ts:184-218",
+            "src/core/auth/providers/discord.ts:326-349",
+            "src/core/auth/discord-self-registration.ts:100-116",
+            "drizzle/0114_discord_guild_single_tenant.sql"
+          ],
+          "recommended": true,
+          "recommendedReason": "It closes the leak without making tenants wait for the platform admin."
+        },
+        {
+          "id": "do-nothing",
+          "name": "Do nothing",
+          "description": "Accept the risk because every tenant today is run by people who know each other.",
+          "pros": [
+            "No work."
+          ],
+          "cons": [
+            "The first tenant run by a stranger can read another group's member list.",
+            "Member names leak without anyone being told."
+          ],
+          "effort": "S",
+          "risk": "high"
+        }
+      ],
+      "tags": [
+        "verified",
+        "cross-tenant"
+      ]
+    },
+    {
+      "id": "LOG-01",
+      "area": "log",
+      "severity": "high",
+      "status": "open",
+      "title": "Ten REST reads at once can freeze the whole web server",
+      "summary": "Each REST read holds one database connection and then asks for a second one from the same pool. With ten reads at once, every request in the process hangs, including sign-in.",
+      "location": {
+        "path": "src/app/api/_lib/api-helpers.ts",
+        "line": 260,
+        "endLine": 276
+      },
+      "relatedIds": [
+        "SEC-03"
+      ],
+      "evidence": [
+        {
+          "type": "file",
+          "path": "src/app/api/_lib/api-helpers.ts",
+          "line": 260,
+          "endLine": 276,
+          "excerpt": "return await withTenantDb(authResult.db, { ... }, async (tenantDb) => {\n  const readCtx = { ...authResult, db: tenantDb, request };\n  const rateLimitResponse = await withRateLimit(\n    rateLimitKey(\"api:read\", authResult.authUserId),\n    RATE_LIMITS.apiRead,\n  );",
+          "note": "The rate-limit check runs inside the tenant transaction, so connection 1 is still held."
+        },
+        {
+          "type": "file",
+          "path": "src/core/rate-limit-middleware.ts",
+          "line": 28,
+          "excerpt": "const db = await getDb();",
+          "note": "`withRateLimit` takes connection 2 from the same shared pool."
+        },
+        {
+          "type": "file",
+          "path": "src/core/config.ts",
+          "line": 9,
+          "excerpt": "const databasePoolMaxConnectionsSchema = z.number().int().positive().default(10);",
+          "note": "The pool holds 10 connections by default."
+        },
+        {
+          "type": "command",
+          "command": "grep -rn connectionTimeoutMillis src",
+          "cwd": "/mnt/c/git/vcsg8/flightline",
+          "output": "",
+          "note": "No pool sets a checkout timeout. The `pg` default is to wait forever, so a full pool never recovers."
+        },
+        {
+          "type": "file",
+          "path": "src/app/api/_lib/api-helpers.ts",
+          "line": 447,
+          "endLine": 452,
+          "note": "Writes take the rate-limit token inside the command transaction. If the request fails, the rollback gives the token back, so failed writes are never throttled."
+        },
+        {
+          "type": "file",
+          "path": "src/app/api/wiki/assets/[...path]/route.ts",
+          "line": 24,
+          "endLine": 28,
+          "note": "This route does it the safe way: it checks the rate limit before it opens any transaction."
+        }
+      ],
+      "current": {
+        "description": "`handleRead` opens the tenant transaction first, then checks the rate limit on the shared pool. `handleMutation` checks the limit inside the write transaction. About nine routes skip these helpers and check the limit first.",
+        "pros": [
+          "One helper wraps auth, the transaction and the rate limit, so most routes stay short.",
+          "The write limit and the write succeed or fail together, which is easy to reason about."
+        ],
+        "cons": [
+          "Ten slow reads at once use every connection, and each waits for an eleventh that never comes. The process stops serving everyone.",
+          "Failed writes hand back their token, so someone probing the API is never slowed down.",
+          "The token row is locked for the whole write, so one user's writes run one at a time.",
+          "Routes disagree on where the check goes, so new routes copy whichever one they see first."
+        ]
+      },
+      "coas": [
+        {
+          "id": "limit-before-tx",
+          "name": "Check the limit before the transaction",
+          "description": "In both helpers, take the rate-limit token in its own short transaction before opening the tenant transaction. Also set `connectionTimeoutMillis` on every pool so a full pool returns 503 instead of hanging.",
+          "pros": [
+            "Removes the deadlock: a request never holds one connection while waiting for another.",
+            "Failed writes still spend their token, so probing is throttled.",
+            "Matches the routes that already do it right, so there is one pattern."
+          ],
+          "cons": [
+            "A request that is later refused by a permission check still spends a token.",
+            "Touches the helper every API route uses, so it needs a careful test run."
+          ],
+          "effort": "M",
+          "risk": "low",
+          "touches": [
+            "src/app/api/_lib/api-helpers.ts:260-276",
+            "src/app/api/_lib/api-helpers.ts:447-452",
+            "src/core/rate-limit-middleware.ts:24-35",
+            "src/core/db/client.ts:60-70"
+          ],
+          "recommended": true,
+          "recommendedReason": "It removes the cause, not just the symptom, and the safe pattern already exists in the codebase."
+        },
+        {
+          "id": "limit-on-tenant-tx",
+          "name": "Run the check on the tenant transaction",
+          "description": "Pass `tenantDb` into the rate-limit check so it uses connection 1 instead of asking for connection 2.",
+          "pros": [
+            "Smallest change: one argument.",
+            "Removes the deadlock."
+          ],
+          "cons": [
+            "Failed requests still give their token back.",
+            "The token row stays locked for the whole request, so a user's requests queue up."
+          ],
+          "effort": "S",
+          "risk": "med",
+          "touches": [
+            "src/app/api/_lib/api-helpers.ts:271-274"
+          ]
+        },
+        {
+          "id": "pool-timeout-only",
+          "name": "Only add a pool timeout",
+          "description": "Set `connectionTimeoutMillis` so a full pool fails fast. Leave the order of operations as it is.",
+          "pros": [
+            "One-line change with no change to request logic.",
+            "The server recovers on its own instead of hanging until restart."
+          ],
+          "cons": [
+            "Under load, users still get errors instead of pages.",
+            "Failed writes are still not throttled."
+          ],
+          "effort": "S",
+          "risk": "low",
+          "touches": [
+            "src/core/db/client.ts:60-70"
+          ]
+        }
+      ],
+      "tags": [
+        "verified"
+      ]
+    },
+    {
+      "id": "UX-02",
+      "area": "ux",
+      "severity": "high",
+      "status": "open",
+      "title": "Night theme hides links and active items in the tenant's brand colour",
+      "summary": "In the night theme, text drawn in the tenant's brand colour is dark navy on near-black. Night users cannot see wiki links, the active menu item or page eyebrows.",
+      "location": {
+        "path": "src/ui/tenant-brand.tsx",
+        "line": 22,
+        "endLine": 32
+      },
+      "evidence": [
+        {
+          "type": "screenshot",
+          "path": "shots/wiki-desktop-night.jpg",
+          "caption": "Night theme, wiki page: links, the active sidebar item and the active table-of-contents item are navy on near-black."
+        },
+        {
+          "type": "file",
+          "path": "src/ui/tenant-brand.tsx",
+          "line": 27,
+          "excerpt": "\"--squadron\": brand.primaryColor,",
+          "note": "The tenant's brand colour is used as-is for every theme. Nothing lightens it for night."
+        },
+        {
+          "type": "file",
+          "path": "src/ui/styles/components.css",
+          "line": 283,
+          "endLine": 286,
+          "excerpt": ".fl-page-header .fl-eyebrow {\n  margin-bottom: var(--space-2);\n  color: var(--squadron);\n}",
+          "note": "Page eyebrows use the raw brand colour for text."
+        },
+        {
+          "type": "file",
+          "path": "src/ui/styles/workspaces.css",
+          "line": 6160,
+          "endLine": 6162,
+          "note": "The active table-of-contents item also uses the raw brand colour."
+        },
+        {
+          "type": "file",
+          "path": "src/ui/styles/foundation.css",
+          "line": 47,
+          "endLine": 52,
+          "note": "Night mode already mixes `--link-ink` toward the text colour. Only rules that use `--link-ink` get that help; the rules above do not."
+        },
+        {
+          "type": "file",
+          "path": "src/core/architecture.test.ts",
+          "line": 1971,
+          "endLine": 1973,
+          "note": "A test pins the exact night `--link-ink` formula, so any change must update this test too."
+        }
+      ],
+      "current": {
+        "description": "Each tenant picks a brand colour. `tenantBrandStyle` writes it to `--squadron`, and many CSS rules use `--squadron` directly for text, borders and fills in both themes.",
+        "pros": [
+          "The brand colour looks the same everywhere, which tenants asked for.",
+          "One variable is easy to reason about.",
+          "It works well in the day theme, where most brand colours are dark."
+        ],
+        "cons": [
+          "Dark brand colours drop to about 2:1 contrast on the night background. The accessibility minimum for text is 4.5:1.",
+          "Every tenant with a dark brand colour is affected, and they cannot fix it themselves.",
+          "The fix for links in `foundation.css` does not reach eyebrows, the active menu item or the table of contents."
+        ]
+      },
+      "coas": [
+        {
+          "id": "night-text-token",
+          "name": "Add a night text version of the brand colour",
+          "description": "Add a `--squadron-text` variable. In the night theme, lighten the brand colour until it reaches 4.5:1 contrast. Use it for every text rule that uses `--squadron` today.",
+          "pros": [
+            "Keeps the tenant's colour, just lighter where it has to be read.",
+            "Works for every tenant with no action from them.",
+            "Borders and fills keep the exact brand colour."
+          ],
+          "cons": [
+            "About 28 CSS rules must switch variables, and it is easy to miss one.",
+            "The lightened colour is close to the brand, not exact."
+          ],
+          "effort": "M",
+          "risk": "low",
+          "touches": [
+            "src/ui/tenant-brand.tsx:22-32",
+            "src/ui/styles/foundation.css:47-52",
+            "src/ui/styles/components.css:283-286",
+            "src/ui/styles/workspaces.css:6160-6162",
+            "src/core/architecture.test.ts:1971-1973"
+          ],
+          "recommended": true,
+          "recommendedReason": "It fixes every tenant at once and keeps the brand look, for a moderate CSS change."
+        },
+        {
+          "id": "tenant-night-colour",
+          "name": "Let tenants set a separate night colour",
+          "description": "Add a second colour field to unit branding and use it when the night theme is on.",
+          "pros": [
+            "Tenants get full control over how their brand looks at night."
+          ],
+          "cons": [
+            "Needs a database column, a form field and a migration.",
+            "Tenants who never set it stay broken.",
+            "Nothing stops a tenant from picking another dark colour."
+          ],
+          "effort": "L",
+          "risk": "low",
+          "touches": [
+            "src/ui/tenant-brand.tsx:22-32"
+          ]
+        },
+        {
+          "id": "no-brand-text",
+          "name": "Stop using the brand colour for text",
+          "description": "Use the normal text colour for eyebrows, links and active items. Keep the brand colour only for borders, bars and fills.",
+          "pros": [
+            "Always readable in both themes.",
+            "Simple rule for future CSS: brand colour is never text."
+          ],
+          "cons": [
+            "Pages lose some brand colour in the day theme too.",
+            "Links need another cue, such as an underline, to stand out."
+          ],
+          "effort": "S",
+          "risk": "low",
+          "touches": [
+            "src/ui/styles/components.css:283-286",
+            "src/ui/styles/workspaces.css:6160-6162"
+          ]
+        }
+      ],
+      "tags": [
+        "live",
+        "a11y"
+      ]
+    },
+    {
+      "id": "DATA-15",
+      "area": "sec",
+      "severity": "low",
+      "status": "open",
+      "title": "Paged lists can repeat or skip rows",
+      "summary": "Some lists sort only by columns that can tie, such as join date or title. When users page through them, a row can show up twice or not at all.",
+      "location": {
+        "path": "src/modules/roster/queries.ts",
+        "line": 72,
+        "endLine": 106
+      },
+      "evidence": [
+        {
+          "type": "file",
+          "path": "src/modules/roster/queries.ts",
+          "line": 74,
+          "endLine": 75,
+          "excerpt": "case \"name_asc\":\n  return [asc(members.lastName), asc(members.firstName), asc(members.id)];",
+          "note": "The name sorts end on `id`, which makes the order stable."
+        },
+        {
+          "type": "file",
+          "path": "src/modules/roster/queries.ts",
+          "line": 78,
+          "endLine": 79,
+          "excerpt": "case \"joined_asc\":\n  return [asc(members.joinedOn), asc(members.lastName), asc(members.firstName)];",
+          "note": "Most other sorts stop at first name. Two members with the same name and join date can swap places."
+        },
+        {
+          "type": "file",
+          "path": "src/modules/wiki/queries.ts",
+          "line": 205,
+          "endLine": 209,
+          "note": "Wiki page lists sort by `title` only and then use `LIMIT` and `OFFSET`."
+        },
+        {
+          "type": "file",
+          "path": "src/app/api/members/route.ts",
+          "line": 44,
+          "endLine": 47,
+          "note": "The members API builds each page by slicing a fresh query, so it has the same problem."
+        }
+      ],
+      "current": {
+        "description": "List queries sort by what the user picked, then by name. Pages are cut with `LIMIT` and `OFFSET`. Postgres does not promise any order among rows that tie.",
+        "pros": [
+          "The sort order matches what users expect to see.",
+          "The name sorts are already stable.",
+          "Most units are small, so ties across a page boundary are rare."
+        ],
+        "cons": [
+          "When ties do cross a page boundary, a member can be missed during a review.",
+          "The bug is hard to reproduce, so a user report would be hard to confirm."
+        ]
+      },
+      "coas": [
+        {
+          "id": "id-tiebreaker",
+          "name": "Add `id` as the last sort key everywhere",
+          "description": "End every paged `ORDER BY` with the row's `id`, the way the name sorts already do.",
+          "pros": [
+            "Small, mechanical change.",
+            "Order is fully stable, so pages never overlap."
+          ],
+          "cons": [
+            "Must be remembered for every new paged query."
+          ],
+          "effort": "S",
+          "risk": "low",
+          "touches": [
+            "src/modules/roster/queries.ts:72-106",
+            "src/modules/wiki/queries.ts:205-209"
+          ],
+          "recommended": true,
+          "recommendedReason": "It fixes the bug for a few lines of change with almost no risk."
+        },
+        {
+          "id": "cursor-paging",
+          "name": "Switch to cursor paging",
+          "description": "Page by \"rows after this sort key and id\" instead of by page number.",
+          "pros": [
+            "Stable even when rows are added between page loads.",
+            "Faster on large tables."
+          ],
+          "cons": [
+            "Changes the API contract and the UI's page controls.",
+            "Much more work than the bug is worth today."
+          ],
+          "effort": "L",
+          "risk": "med"
+        },
+        {
+          "id": "do-nothing",
+          "name": "Do nothing",
+          "description": "Accept the risk because lists are small and ties are rare.",
+          "pros": [
+            "No work."
+          ],
+          "cons": [
+            "Rare, confusing bugs stay possible."
+          ],
+          "effort": "S",
+          "risk": "low"
+        }
+      ]
+    }
+  ],
+  "fixFirst": [
+    {
+      "id": "LOG-01",
+      "why": "Ten REST reads at once can hang the whole web process, and failed writes are never throttled."
+    },
+    {
+      "id": "UX-02",
+      "why": "Night users cannot see links or where they are in the wiki."
+    },
+    {
+      "id": "SEC-03",
+      "why": "Cross-tenant member list leak through a claimed Discord server. Fixed; kept here for the record."
+    }
+  ],
+  "openQuestions": [
+    {
+      "findingId": "UX-02",
+      "text": "Should tenants be able to set their own night colour later, even if we lighten it by default now?"
+    },
+    {
+      "findingId": "LOG-01",
+      "text": "What should a full pool return to users: a 503 page, or a retry after a short wait?"
+    }
+  ],
+  "clean": [
+    {
+      "area": "sec",
+      "text": "Local invite and reset tokens, sign-in limits, the upload pipeline and public wiki grants hold up. All 27 permission keys are seeded."
+    },
+    {
+      "area": "log",
+      "text": "Next 16 async APIs are used correctly. `redirect` and `notFound` are rethrown. RBAC (role-based access control) has no catch-to-allow paths."
+    },
+    {
+      "area": "ux",
+      "text": "The login page, units tree and wiki desktop read view look good in the day theme. The page never scrolls sideways."
+    }
+  ],
+  "notes": "Example report for the audit-report tool. Evidence was checked against the working tree on 2026-09-26. SEC-03 line numbers point at the fixed code."
+}

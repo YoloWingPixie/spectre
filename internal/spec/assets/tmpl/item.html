@@ -1,0 +1,29 @@
+{{define "content"}}
+<p class="small muted">{{.Card.Label}} · {{.Card.It.Section}}{{if .Card.It.Page}} · <a href="{{.Card.It.Page}}">in context</a>{{end}}{{if .NextUnrev}} · <a href="{{.NextUnrev}}">next unreviewed →</a>{{end}}</p>
+{{template "card" .Card}}
+{{if .OD}}<article class="card full" id="answer">
+<h3>{{if .Card.Answered}}Answer again{{else}}Answer this decision{{end}}</h3>
+{{if .Card.Answers}}<div class="lbl">Answers (pending fold-in)</div>{{template "entries" .Card.Answers}}{{end}}
+<form method="post" action="/answer" class="stack">
+<input type="hidden" name="id" value="{{.Card.It.ID}}">
+{{range .Options}}<label class="opt"><input type="radio" name="choice" value="{{.Value}}"><span><b>({{.Letter}})</b> {{.HTML}}{{if .Rec}} <span class="chip s-decided">recommended</span>{{end}}</span></label>{{end}}
+<label class="opt"><input type="radio" name="choice" value="own" id="opt-own"{{if not .Options}} checked{{end}}><span>Own answer</span></label>
+<textarea name="answer" id="own" placeholder="Own answer" aria-label="Own answer"></textarea>
+<textarea name="note" placeholder="Note (optional)" aria-label="Note"></textarea>
+<div><button type="submit">Save answer</button></div>
+</form>
+</article>{{end}}
+<article class="card full" id="comment">
+<h3>Comment</h3>
+<form method="post" action="/comment" class="stack">
+<input type="hidden" name="id" value="{{.Card.It.ID}}">
+<textarea name="text" required placeholder="Review comment" aria-label="Review comment"></textarea>
+<div><button type="submit">Add comment</button></div>
+</form>
+</article>
+{{if .Backlinks}}<h2>Referenced by ({{len .Backlinks}})</h2>
+<ul class="plain small">{{range .Backlinks}}<li><a href="/id/{{.ID}}">{{.ID}}</a> {{.Title}} <span class="muted">{{kindLabel .Kind}}</span></li>{{end}}</ul>{{end}}
+{{if .Refs}}<h2>References ({{len .Refs}})</h2>
+<ul class="plain small">{{range .Refs}}<li><a href="/id/{{.ID}}">{{.ID}}</a> {{.Title}}</li>{{end}}</ul>{{end}}
+<nav class="pager">{{if .Prev}}<a href="/id/{{.Prev.ID}}">← {{.Prev.ID}}</a>{{else}}<span></span>{{end}}{{if .Next}}<a href="/id/{{.Next.ID}}">{{.Next.ID}} →</a>{{else}}<span></span>{{end}}</nav>
+{{end}}

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Audit project state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "projectId", "dataDir", "activeAuditId", "audits"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "projectId": { "$ref": "#/$defs/id" },
+    "dataDir": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*[\\\\:])(?=.*\\S).+$" },
+    "activeAuditId": { "$ref": "#/$defs/id", "description": "Must refer to an audit in audits." },
+    "audits": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/audit" } }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "textList": { "type": "array", "items": { "type": "string", "pattern": "\\S" } },
+    "repository": {
+      "type": "object", "additionalProperties": false, "required": ["head", "fingerprint"],
+      "properties": {
+        "head": { "anyOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-f]{40,64}$" }] },
+        "fingerprint": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/hash" }] }
+      }
+    },
+    "audit": {
+      "type": "object", "additionalProperties": false, "required": ["id", "status", "checkpoint"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id", "description": "Unique within this project." },
+        "status": { "enum": ["in-progress", "awaiting-review", "complete"] },
+        "checkpoint": {
+          "type": "object", "additionalProperties": false,
+          "required": ["updatedAt", "completed", "nextSteps", "repository", "reportRevision"],
+          "properties": {
+            "updatedAt": { "type": "string", "format": "date-time", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$" },
+            "completed": { "$ref": "#/$defs/textList" },
+            "nextSteps": { "$ref": "#/$defs/textList" },
+            "repository": { "$ref": "#/$defs/repository" },
+            "reportRevision": { "$ref": "#/$defs/hash" }
+          }
+        }
+      }
+    }
+  }
+}

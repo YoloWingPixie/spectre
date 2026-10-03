@@ -1,0 +1,70 @@
+:root {
+  --bg:#f6f5f1; --fg:#1c1f23; --muted:#5d646d; --card:#fff; --border:#dcd8cf;
+  --accent:#1f5fae; --accent-bg:#e6eefa; --bar:#fbfaf7; --code:#efece5;
+  --danger:#b3261e; --danger-bg:#fbe9e7; --warning:#8a5a00; --warning-bg:#fbf0d9;
+  --positive:#2e6b3a; --positive-bg:#e5f2e7; --question:#8d2d8f; --question-bg:#f6e6f6;
+  --neutral:#5d646d; --neutral-bg:#ecebe7; --mark:#fff3b0;
+  --mvp:var(--danger); --mvp-bg:var(--danger-bg); --p2:var(--accent); --p2-bg:var(--accent-bg);
+  --p3:var(--neutral); --p3-bg:var(--neutral-bg); --dec:var(--positive); --dec-bg:var(--positive-bg);
+  --der:var(--warning); --der-bg:var(--warning-bg); --open:var(--question); --open-bg:var(--question-bg);
+  --content-width:980px; --gutter:16px; --radius-control:6px; --radius-card:8px;
+  --font-body:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-code:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#15181c; --fg:#e7e5e0; --muted:#a3a9b1; --card:#1d2126; --border:#323840;
+    --accent:#8ab4f8; --accent-bg:#1d2a3d; --bar:#1a1d22; --code:#262b31;
+    --danger:#ff8a80; --danger-bg:#3a1f1d; --warning:#f2c46b; --warning-bg:#352a14;
+    --positive:#8fd19e; --positive-bg:#1d3023; --question:#e7a6e8; --question-bg:#34203a;
+    --neutral:#b7bcc3; --neutral-bg:#2a2e33; --mark:#5a4b12; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#15181c; --fg:#e7e5e0; --muted:#a3a9b1; --card:#1d2126; --border:#323840;
+  --accent:#8ab4f8; --accent-bg:#1d2a3d; --bar:#1a1d22; --code:#262b31;
+  --danger:#ff8a80; --danger-bg:#3a1f1d; --warning:#f2c46b; --warning-bg:#352a14;
+  --positive:#8fd19e; --positive-bg:#1d3023; --question:#e7a6e8; --question-bg:#34203a;
+  --neutral:#b7bcc3; --neutral-bg:#2a2e33; --mark:#5a4b12; color-scheme:dark;
+}
+*,*::before,*::after { box-sizing:border-box }
+[hidden] { display:none!important }
+html { -webkit-text-size-adjust:100% }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.55 var(--font-body) }
+a { color:var(--accent); text-decoration:none }
+a:hover { text-decoration:underline }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
+code,pre,.mono,.rid { font-family:var(--font-code); font-variant-ligatures:none }
+code { background:var(--code); padding:0 .25em; border-radius:3px; font-size:.9em; overflow-wrap:anywhere }
+pre { background:var(--code); color:var(--fg); padding:10px 12px; border-radius:var(--radius-control); overflow-x:auto; font-size:12.5px; line-height:1.45; max-width:100% }
+pre code { background:none; padding:0; overflow-wrap:normal; font-size:inherit }
+button,input,select,textarea { font:inherit; font-size:13px; color:var(--fg); background:var(--card); border:1px solid var(--border); border-radius:var(--radius-control); padding:5px 8px; min-width:0 }
+button { cursor:pointer }
+button:hover { border-color:var(--accent) }
+button:disabled,input:disabled,textarea:disabled { opacity:.6; cursor:not-allowed }
+input[type="radio"],input[type="checkbox"] { accent-color:var(--accent) }
+h1 { font-size:24px; margin:22px 0 10px; padding-top:6px; border-top:3px solid var(--fg) }
+h2 { font-size:19px; margin:26px 0 8px }
+h3 { font-size:16px; margin:6px 0 }
+h4 { font-size:15px }
+main,.wrap { max-width:var(--content-width); margin:0 auto; padding:0 var(--gutter) 80px }
+p,li,dd { overflow-wrap:break-word }
+.app-bar { background:var(--bar); border-bottom:1px solid var(--border); padding:8px var(--gutter); position:sticky; top:0; z-index:5 }
+.app-nav { display:flex; gap:6px 12px; align-items:center; flex-wrap:wrap; max-width:calc(var(--content-width) - 2 * var(--gutter)); margin:0 auto; font-size:14px }
+.app-brand { letter-spacing:.02em }
+.app-mode { background:var(--accent-bg); color:var(--accent); border-radius:999px; padding:1px 8px; font-size:12px; font-weight:600 }
+.app-name { min-width:0; overflow-wrap:anywhere }
+.sp { flex:1 1 auto }
+.chip,.pill,.tag,.st,.dec-chip { font-size:11.5px; font-weight:600; padding:1px 7px; border-radius:999px; letter-spacing:.02em; white-space:nowrap }
+.muted { color:var(--muted) }
+.small { font-size:13px }
+.vh { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap }
+@media (max-width:600px) {
+  .app-bar { position:static }
+  body { font-size:14.5px }
+  h1 { font-size:21px }
+}
+@media (prefers-reduced-motion:reduce) {
+  *,*::before,*::after { transition:none!important; animation:none!important }
+}

@@ -1,0 +1,41 @@
+{{define "content"}}
+<div class="spec-home">
+<section class="home-hero" aria-labelledby="home-title">
+<div class="home-eyebrow">Specification overview</div>
+<h1 id="home-title">{{.Title}}</h1>
+<p class="home-intro">Explore the specification, follow its connections, and work through your review.</p>
+<div class="home-actions">{{with index .Progress 0}}<a class="home-primary" href="{{if .Next}}{{.Next}}{{else}}/req{{end}}">{{if .Next}}Continue review{{else}}Browse requirements{{end}} <span aria-hidden="true">→</span></a>{{end}}<a class="home-secondary" href="/readme">Read the introduction</a></div>
+</section>
+
+<section class="home-stats" aria-label="Specification contents">
+<a class="home-stat" href="/req"><p><b>{{.C.Reqs}}</b> requirements</p><span>{{index .C.Pri "MVP"}} MVP · {{index .C.Pri "P2"}} P2 · {{index .C.Pri "P3"}} P3</span></a>
+<a class="home-stat" href="/scenarios/1"><p><b>{{.C.Scenarios}}</b> scenarios</p><span>Expected behavior</span></a>
+<a class="home-stat" href="/tasks/1"><p><b>{{.C.Tasks}}</b> tasks</p><span>Implementation milestones</span></a>
+<a class="home-stat" href="/od"><p><b>{{.C.ODs}}</b> open decisions</p><span>{{.C.ODResolved}} resolved · {{.ODAnswered}} answered</span></a>
+</section>
+
+<div class="home-overview">
+<section class="home-panel" aria-labelledby="home-progress-title">
+<div class="home-section-head"><h2 id="home-progress-title">Review progress</h2><span class="home-caption">Pick up where you left off</span></div>
+{{range .Progress}}<div class="home-progress-row"><div class="home-progress-head"><strong>{{.Label}}</strong>{{if .Next}}<a href="{{.Next}}" aria-label="Next unreviewed {{.Label}}">Next <span aria-hidden="true">→</span></a>{{else}}<span class="home-complete">Complete</span>{{end}}</div>
+<div class="home-progress-meta">{{.Done}} of {{.Total}} reviewed <span>{{.Pct}}%</span></div><progress value="{{.Done}}" max="{{if .Total}}{{.Total}}{{else}}1{{end}}" aria-label="{{.Label}} review progress">{{.Pct}}%</progress>{{if .Breakdown}}<p class="home-breakdown">{{.Breakdown}}</p>{{end}}</div>{{end}}
+</section>
+
+<section class="home-panel" aria-labelledby="home-documents-title">
+<div class="home-section-head"><h2 id="home-documents-title">Documents</h2><span class="home-caption">The bigger picture</span></div>
+<nav class="home-documents" aria-label="Specification documents">
+<a href="/readme"><span><strong>Read me</strong><small>ID scheme, sources, and context</small></span><span aria-hidden="true">↗</span></a>
+<a href="/req"><span><strong>Requirements overview</strong><small>Conventions and area index</small></span><span aria-hidden="true">↗</span></a>
+<a href="/design/1"><span><strong>Design</strong><small>{{.C.DEs}} design elements and responsibilities</small></span><span aria-hidden="true">↗</span></a>
+<a href="/search"><span><strong>Search and filter</strong><small>Find items across the specification</small></span><span aria-hidden="true">↗</span></a>
+</nav>
+<div class="home-status"><span class="home-caption">Requirement status</span><div><span class="chip s-decided">{{index .C.Status "decided"}} decided</span><span class="chip s-derived">{{index .C.Status "derived"}} derived</span><span class="chip s-open">{{index .C.Status "open"}} open</span></div></div>
+</section>
+</div>
+
+<section class="home-chapters" aria-labelledby="home-chapters-title">
+<div class="home-section-head"><div><h2 id="home-chapters-title">Requirement chapters</h2><p class="home-caption">Choose an area to review its requirements.</p></div><span class="home-count">{{len .Chapters}} chapters</span></div>
+<ul class="home-chapter-grid">{{range .Chapters}}<li><a class="home-chapter" href="/req/{{.Num}}"><strong>{{.Title}}</strong><span class="home-chapter-meta">{{.Done}} of {{.Total}} reviewed <span aria-hidden="true">→</span></span></a></li>{{end}}</ul>
+</section>
+</div>
+{{end}}

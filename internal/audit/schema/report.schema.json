@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "audit-report/report.schema.json",
+  "title": "Audit report",
+  "description": "Input for spectre audit build. One JSON file per report. Text fields are plain text: HTML is escaped, and `backticks` become <code>. A backticked repo path with a line (`src/a.ts:12` or `src/a.ts:12-20`) becomes an editor link.",
+  "type": "object",
+  "required": ["title", "project", "repoRoot", "date", "scope", "areas", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string", "description": "Optional pointer to this schema for editor completion." },
+    "title": { "type": "string", "minLength": 1, "description": "Page title and H1, e.g. \"Flightline Codebase Audit\"." },
+    "project": { "type": "string", "minLength": 1, "description": "Short project name shown in the header meta line." },
+    "repoRoot": { "type": "string", "pattern": "^/", "description": "Absolute POSIX path of the repo on the reader's machine, e.g. /mnt/c/git/vcsg8/flightline. Every finding path is relative to this. Editor links are built from it." },
+    "wslDistro": { "type": "string", "description": "WSL distro name for the VS Code / Cursor WSL links. Default: $WSL_DISTRO_NAME at build time, else \"Ubuntu\"." },
+    "commit": { "type": "string", "description": "Commit the audit read, e.g. \"dcebf31\"." },
+    "branch": { "type": "string" },
+    "date": { "type": "string", "description": "Audit date, e.g. 2026-09-26." },
+    "stamp": { "type": "string", "description": "Small boxed label above the title. Default \"Discrepancy log\"." },
+    "scope": { "type": "string", "minLength": 1, "description": "What was looked at, how (read-only? live?), and what was left out." },
+    "areas": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Sections of the report, in display order.",
+      "items": {
+        "type": "object",
+        "required": ["key", "name"],
+        "additionalProperties": false,
+        "properties": {
+          "key": { "type": "string", "pattern": "^[a-z0-9-]+$", "description": "Short id used by findings[].area, e.g. \"sec\"." },
+          "name": { "type": "string", "minLength": 1, "description": "Display name, e.g. \"Security & data\"." }
+        }
+      }
+    },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "fixFirst": {
+      "type": "array",
+      "description": "Finding ids in the order to fix them. An item can be an id string, or {id, why} to give a one-line reason (else the summary is shown).",
+      "items": {
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "object",
+            "required": ["id"],
+            "additionalProperties": false,
+            "properties": { "id": { "type": "string" }, "why": { "type": "string", "minLength": 1 } }
+          }
+        ]
+      }
+    },
+    "openQuestions": {
+      "type": "array",
+      "description": "Questions only the owner can answer. A string, or {text, findingId} to link a finding.",
+      "items": {
+        "oneOf": [
+          { "type": "string", "minLength": 1 },
+          {
+            "type": "object",
+            "required": ["text"],
+            "additionalProperties": false,
+            "properties": { "text": { "type": "string", "minLength": 1 }, "findingId": { "type": "string" } }
+          }
+        ]
+      }
+    },
+    "clean": {
+      "type": "array",
+      "description": "What was checked and found fine. Tells the reader what not to worry about.",
+      "items": {
+        "type": "object",
+        "required": ["area", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "area": { "type": "string", "description": "An area key (shown as its name) or free text." },
+          "text": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "notes": { "type": "string", "description": "Footer text: where the raw notes are, what could not be checked." }
+  },
+  "$defs": {
+    "relPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![/\\\\])(?![A-Za-z]:)(?!.*(^|/)\\.\\.(/|$))[^\\\\]+$",
+      "description": "Path relative to repoRoot, forward slashes, no \"..\"."
+    },
+    "line": { "type": "integer", "minimum": 1, "description": "1-based line number." },
+    "location": {
+      "type": "object",
+      "required": ["path", "line"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "$ref": "#/$defs/relPath" },
+        "line": { "$ref": "#/$defs/line" },
+        "endLine": { "$ref": "#/$defs/line", "description": "Last line of a range. Must be >= line. Links open at line." },
+        "col": { "$ref": "#/$defs/line", "description": "Column. Default 1." }
+      }
+    },
+    "evidence": {
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "A place in the code. Give an excerpt, a note, or both.",
+          "required": ["type", "path", "line"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "file" },
+            "path": { "$ref": "#/$defs/relPath" },
+            "line": { "$ref": "#/$defs/line" },
+            "endLine": { "$ref": "#/$defs/line" },
+            "col": { "$ref": "#/$defs/line" },
+            "excerpt": { "type": "string", "description": "Short code excerpt, copied exactly (15 lines or fewer). Shown as a code block. '...' for cut lines is fine." },
+            "note": { "type": "string", "description": "One sentence: what this line shows." }
+          }
+        },
+        {
+          "type": "object",
+          "description": "An image file.",
+          "required": ["type", "path", "caption"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "screenshot" },
+            "path": { "type": "string", "pattern": "\\.(png|jpe?g|gif|webp|svg)$", "description": "Relative to the report JSON file (not repoRoot)." },
+            "caption": { "type": "string", "minLength": 1, "description": "What the image shows. Also used as alt text." }
+          }
+        },
+        {
+          "type": "object",
+          "description": "A command you ran and what it printed.",
+          "required": ["type", "command", "output"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "command" },
+            "command": { "type": "string", "minLength": 1 },
+            "output": { "type": "string", "description": "Exact output, trimmed to the part that matters. Empty string means no output." },
+            "cwd": { "type": "string", "description": "Directory it ran in." },
+            "note": { "type": "string", "description": "One sentence: what the output proves." }
+          }
+        }
+      ]
+    },
+    "coa": {
+      "type": "object",
+      "description": "A course of action: one real way to respond.",
+      "required": ["name", "description", "pros", "cons", "effort", "risk"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "description": "Stable id, unique within the finding, e.g. \"do-nothing\". Reader decisions are saved against it, so keep it when you reorder or reword. If missing, the build uses coa-1, coa-2... by position and warns." },
+        "name": { "type": "string", "minLength": 1, "description": "Short name, e.g. \"Check the limit before the transaction\" or \"Do nothing\"." },
+        "description": { "type": "string", "minLength": 1, "description": "What you would do, in plain words." },
+        "pros": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "cons": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "effort": { "enum": ["S", "M", "L"], "description": "S: hours. M: a day or two. L: a week or more, or needs other people." },
+        "risk": { "enum": ["low", "med", "high"], "description": "Risk of doing this option (for \"Do nothing\": risk of leaving it)." },
+        "touches": {
+          "type": "array",
+          "description": "Files this option changes: \"path\", \"path:line\" or \"path:line-end\", relative to repoRoot.",
+          "items": { "type": "string", "pattern": "^[^/:\\s][^:]*(:\\d+(-\\d+)?)?$" }
+        },
+        "recommended": { "type": "boolean", "description": "At most one COA per finding. More than one fails the build." },
+        "recommendedReason": { "type": "string", "minLength": 1, "description": "Required when recommended is true. One sentence." }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": ["id", "area", "severity", "status", "title", "summary", "location", "current"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9_.~:@+-]+$", "description": "Unique id, e.g. \"SEC-03\". Also names the feedback record feedback/<id>, so only letters, digits and _ - . ~ : @ +." },
+        "area": { "type": "string", "description": "An areas[].key." },
+        "severity": { "enum": ["critical", "high", "medium", "low"] },
+        "status": { "enum": ["open", "fixed", "accepted", "wont-fix"], "description": "Summary counts show open findings. Closed ones stay listed and are marked." },
+        "statusNote": { "type": "string", "description": "e.g. \"Fixed in migration 0114\" or who accepted the risk and why." },
+        "title": { "type": "string", "minLength": 1, "description": "What is wrong, as a plain statement." },
+        "summary": { "type": "string", "minLength": 1, "description": "1-2 sentences: what is wrong and who it hurts." },
+        "location": { "$ref": "#/$defs/location", "description": "The main place to look." },
+        "relatedIds": { "type": "array", "items": { "type": "string" }, "description": "Other finding ids." },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" }, "description": "Verified proof. The build warns when empty." },
+        "current": {
+          "type": "object",
+          "description": "How it is now, told fairly. For fixed findings, describe the state the audit found.",
+          "required": ["description", "pros", "cons"],
+          "additionalProperties": false,
+          "properties": {
+            "description": { "type": "string", "minLength": 1 },
+            "pros": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Real reasons the current design exists." },
+            "cons": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "What breaks, for whom." }
+          }
+        },
+        "coas": { "type": "array", "items": { "$ref": "#/$defs/coa" }, "description": "2-4 genuinely different options. The build warns outside that range." },
+        "tags": { "type": "array", "items": { "type": "string" }, "description": "Short labels, e.g. \"verified\", \"live\"." }
+      }
+    }
+  }
+}

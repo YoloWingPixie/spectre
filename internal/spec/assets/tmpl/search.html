@@ -1,0 +1,18 @@
+{{define "content"}}
+<h1>Search</h1>
+<form class="flt" action="/search" method="get">
+<input type="search" name="q" value="{{.Q.Q}}" placeholder="Words (all must match)" aria-label="Search words">
+<select name="kind" aria-label="Kind"><option value="">All kinds</option>{{range .Kinds}}<option value="{{.Value}}"{{if eq .Value $.Q.Kind}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+<select name="pri" aria-label="Priority"><option value="">Any priority</option>{{range .Pris}}<option{{if eq . $.Q.Pri}} selected{{end}}>{{.}}</option>{{end}}</select>
+<select name="st" aria-label="Status"><option value="">Any status</option>{{range .Sts}}<option{{if eq . $.Q.St}} selected{{end}}>{{.}}</option>{{end}}</select>
+<select name="ms" aria-label="Milestone"><option value="">Any milestone</option>{{range .Mss}}<option{{if eq . $.Q.Ms}} selected{{end}}>{{.}}</option>{{end}}</select>
+<select name="rev" aria-label="Review state"><option value="">Any review state</option>{{range .Revs}}<option value="{{.Value}}"{{if eq .Value $.Q.Rev}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+{{if .Q.Chapter}}<input type="hidden" name="chapter" value="{{.Q.Chapter}}">{{end}}
+<button type="submit">Search</button>
+</form>
+{{if .Q.Chapter}}<p class="small">Limited to requirements chapter {{.Q.Chapter}}. <a href="{{.NoChapter}}">All chapters</a></p>{{end}}
+<p class="small muted">{{.Total}} results{{if gt .Pages 1}} · page {{.Q.Page}} of {{.Pages}}{{end}}</p>
+{{range .Results}}<div class="res"><div class="ch"><a href="{{.URL}}"><b>{{.Head}}</b></a> {{.Title}} <span class="muted small">{{.Kind}}</span>{{if .View}}{{template "chips" .View}}{{template "verdict" .View.Verdict}}{{end}}</div>
+<div class="snip">{{.Snip}}</div></div>{{end}}
+<nav class="pager">{{if .PrevURL}}<a href="{{.PrevURL}}">← Previous</a>{{else}}<span></span>{{end}}{{if .NextURL}}<a href="{{.NextURL}}">Next →</a>{{else}}<span></span>{{end}}</nav>
+{{end}}

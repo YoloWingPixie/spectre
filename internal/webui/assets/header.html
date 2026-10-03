@@ -1,0 +1,5 @@
+{{define "app-header"}}<header class="app-bar"><div class="app-nav">
+<strong class="app-brand">Spectre</strong><span class="app-mode">{{.Mode}}</span>
+<span class="app-name">{{if .Home}}<a href="{{.Home}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</span>
+<span class="sp"></span><button id="theme" type="button" aria-label="Toggle light or dark theme" title="Toggle light or dark theme">◐</button>
+</div></header>{{end}}

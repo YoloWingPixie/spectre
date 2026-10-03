@@ -1,0 +1,8 @@
+{{define "content"}}
+<h1>{{.Ch.Title}}</h1>
+<p class="small"><b>{{.Done}} of {{.Total}} reviewed</b>{{if .Next}} · <a href="{{.Next}}">next unreviewed →</a>{{end}} · <a href="/search?chapter={{.Ch.Num}}&amp;rev=unreviewed">unreviewed only</a></p>
+<div class="prog"><i style="width:{{.Pct}}%"></i></div>
+{{if .Intro}}{{.Intro}}{{end}}
+{{range .Cards}}{{template "card" .}}{{end}}
+<nav class="pager">{{if .Prev}}<a href="/req/{{.Prev.Num}}">← {{.Prev.Title}}</a>{{else}}<span></span>{{end}}{{if .NextCh}}<a href="/req/{{.NextCh.Num}}">{{.NextCh.Title}} →</a>{{else}}<span></span>{{end}}</nav>
+{{end}}
