@@ -48,6 +48,9 @@ Use the existing Taskfile:
   the build, and reachable vulnerabilities.
 - `task test:browser BROWSER=/path/to/linux/chromium` checks browser behavior.
   Its test driver requires Node 22; installed Spectre does not.
+- `task demos BROWSER=/path/to/linux/chromium` regenerates README workflow GIFs
+  and still images. It requires Node 22 and FFmpeg, uses temporary projects,
+  and checks saved feedback before replacing the recordings.
 - `task benchmark:audit` measures report linting.
 - `task skill:check VALIDATOR=/path/to/skill-creator/scripts/quick_validate.py`
   validates the root and bundled audit skills.

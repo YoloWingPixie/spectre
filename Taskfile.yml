@@ -117,6 +117,33 @@ tasks:
     cmds:
       - go test ./internal/audit -run '^$' -bench '^BenchmarkLintReport$' -benchmem -count=3 -benchtime=500ms
 
+  demos:
+    desc: Record spec and audit GIFs for the README (BROWSER)
+    deps: [build]
+    requires:
+      vars: [BROWSER]
+    preconditions:
+      - sh: test -x {{.BROWSER | shellQuote}}
+        msg: BROWSER must point to Linux Chromium
+      - sh: node -e 'if (Number(process.versions.node.split(".")[0]) < 22) process.exit(1)'
+        msg: Demo recording requires Node 22
+      - sh: command -v ffmpeg && command -v ffprobe
+        msg: Demo recording requires FFmpeg and ffprobe
+    cmds:
+      - node scripts/record-demos.mjs {{.BROWSER | shellQuote}} {{.BIN | shellQuote}} docs/demos
+
+  demos:inspect:
+    desc: Make GIF contact sheets in bin/demo-previews for visual review
+    preconditions:
+      - sh: command -v ffmpeg
+        msg: Contact sheets require FFmpeg
+      - sh: test -f docs/demos/spec-review.gif && test -f docs/demos/audit-review.gif
+        msg: Run task demos first
+    cmds:
+      - mkdir -p bin/demo-previews
+      - ffmpeg -v error -i docs/demos/spec-review.gif -vf 'fps=1/3,scale=512:-1,tile=3x2' -frames:v 1 -y bin/demo-previews/spec-review.png
+      - ffmpeg -v error -i docs/demos/audit-review.gif -vf 'fps=1/3,scale=512:-1,tile=3x2' -frames:v 1 -y bin/demo-previews/audit-review.png
+
   audit:check:
     desc: Validate bundled audit reports
     deps: [build]

@@ -9,6 +9,25 @@ You leave feedback in the page; the agent reads it before continuing.
 - **Audit mode** shows verified findings, evidence, and proposed responses,
   with saved progress across sessions.
 
+## See it in use
+
+These recordings use the bundled examples. The agent has already prepared the
+content and started each viewer.
+
+**Spec review:** search for a requirement, request a change, and save a note.
+The agent can then read the feedback from the spec's `review/` folder.
+
+![Searching a specification and saving a change request](docs/demos/spec-review.gif)
+
+[Still image](docs/demos/spec-review.png)
+
+**Audit review:** inspect the evidence and response options, choose a response,
+and save a note. The agent retrieves those decisions with `spectre audit resume`.
+
+![Reviewing an audit finding and saving a decision and note](docs/demos/audit-review.gif)
+
+[Still image](docs/demos/audit-review.png)
+
 ## Get started
 
 Build with Go 1.26.6 or newer and [Task](https://taskfile.dev):
@@ -81,5 +100,18 @@ task run:audit PROJECT=/path/to/project # your initialized audit
 Each run prints its URL and chooses an available port. Add `PORT=8765` for a
 fixed port. Demo feedback stays in `bin/demo` and survives restarts.
 Use separate terminals for both viewers, and Ctrl+C to stop them.
+
+To regenerate the recordings, install Linux Chromium, Node 22, and FFmpeg
+(including `ffprobe`), then run:
+
+```sh
+task demos BROWSER=/path/to/linux/chromium
+```
+
+The recorder drives both viewers with browser input, verifies the saved
+feedback, and replaces the GIFs and still images in `docs/demos/`. It uses
+temporary projects and leaves your review data alone. Failed recordings retain
+their diagnostic frames in the printed temporary directory.
+`task demos:inspect` makes contact sheets in `bin/demo-previews/` for visual review.
 
 AGPL-3.0. See [LICENSE](LICENSE).
