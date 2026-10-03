@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	auditdocs "github.com/YoloWingPixie/spectre/docs/audit"
 )
 
 type validation struct {
@@ -29,7 +31,7 @@ func validateJSON(data []byte, schemaName string, unknownIsError bool) (validati
 	if err != nil {
 		return validation{}, nil, invalid("Invalid JSON: %v", err)
 	}
-	schemaData, err := resources.ReadFile("schema/" + schemaName)
+	schemaData, err := auditdocs.Files.ReadFile("schema/" + schemaName)
 	if err != nil {
 		return validation{}, nil, err
 	}

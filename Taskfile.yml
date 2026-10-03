@@ -1,157 +1,147 @@
 version: '3'
 
 vars:
+  BIN: '{{.ROOT_DIR}}/bin/spectre'
   DEMO_DIR: '{{.ROOT_DIR}}/bin/demo'
 
 tasks:
-  format:
-    desc: Format Go source
+  default:
+    desc: List tasks
+    silent: true
     cmds:
-      - gofmt -w cmd internal
+      - task --list
 
-  format:check:
-    desc: Check Go formatting without changing files
+  run:
+    desc: Run the spec viewer (DIR, PORT)
+    silent: true
+    aliases: [dev, 'demo:spec']
+    deps: [build]
+    vars:
+      DIR: '{{.DIR | default (printf "%s/spec" .DEMO_DIR)}}'
+      PORT: '{{.PORT | default "0"}}'
     cmds:
       - |
-          files=$(gofmt -l cmd internal)
+          if [ {{.DIR | shellQuote}} = {{printf "%s/spec" .DEMO_DIR | shellQuote}} ]; then
+            mkdir -p {{.DIR | shellQuote}}
+            for demo_source in internal/spec/testdata/atc-spec/*.md; do
+              demo_target={{.DIR | shellQuote}}/"${demo_source##*/}"
+              test -e "$demo_target" || cp "$demo_source" "$demo_target"
+            done
+          fi
+          exec {{.BIN | shellQuote}} spec -dir {{.DIR | shellQuote}} -port {{.PORT | shellQuote}}
+
+  run:audit:
+    desc: Run the audit viewer (PROJECT, PORT)
+    silent: true
+    aliases: ['demo:audit']
+    deps: [build]
+    vars:
+      PROJECT: '{{.PROJECT | default (printf "%s/project" .DEMO_DIR)}}'
+      PORT: '{{.PORT | default "0"}}'
+    cmds:
+      - |
+          if [ {{.PROJECT | shellQuote}} = {{printf "%s/project" .DEMO_DIR | shellQuote}} ]; then
+            export AUDIT_REPORT_HOME={{printf "%s/index" .DEMO_DIR | shellQuote}}
+            export XDG_CACHE_HOME={{printf "%s/cache" .DEMO_DIR | shellQuote}}
+            mkdir -p {{.PROJECT | shellQuote}}
+            {{.BIN | shellQuote}} audit init --project {{.PROJECT | shellQuote}} --source internal/audit/testdata/example/report.json >/dev/null
+          fi
+          exec {{.BIN | shellQuote}} audit view --project {{.PROJECT | shellQuote}} --port {{.PORT | shellQuote}}
+
+  build:
+    desc: Build bin/spectre
+    run: once
+    env:
+      CGO_ENABLED: '0'
+    cmds:
+      - go build -o {{.BIN | shellQuote}} ./cmd/spectre
+
+  format:
+    desc: Format Go code
+    cmds:
+      - gofmt -w cmd internal docs/audit
+
+  format:check:
+    desc: Check Go formatting
+    cmds:
+      - |
+          files=$(gofmt -l cmd internal docs/audit)
           if [ -n "$files" ]; then
             printf 'gofmt needed:\n%s\n' "$files"
             exit 1
           fi
 
   lint:
-    desc: Run Go static analysis
+    desc: Run go vet
     cmds:
       - go vet ./...
 
-  vuln:
-    desc: Check reachable Go vulnerabilities with a pinned development tool
-    cmds:
-      - go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
-
   test:
-    desc: Run Go tests with race detection
+    desc: Run Go tests (PACKAGES, optional arguments after --)
     deps: [build]
+    vars:
+      PACKAGES: '{{.PACKAGES | default "./..."}}'
     env:
-      SPECTRE_BINARY: '{{.ROOT_DIR}}/bin/spectre'
+      SPECTRE_BINARY: '{{.BIN}}'
     cmds:
-      - go test -race ./...
-
-  build:
-    desc: Build the executable
-    env:
-      CGO_ENABLED: '0'
-    cmds:
-      - go build -o bin/spectre ./cmd/spectre
+      - go test -race {{.PACKAGES}} {{.CLI_ARGS}}
 
   test:audit:
-    desc: Verify audit compatibility and command integration
-    deps: [build]
-    env:
-      SPECTRE_BINARY: '{{.ROOT_DIR}}/bin/spectre'
+    desc: Run audit and CLI tests
     cmds:
-      - go test -race ./internal/audit ./cmd/spectre
+      - task: test
+        vars:
+          PACKAGES: './internal/audit ./cmd/spectre'
 
   test:fuzz:
-    desc: Fuzz the HTTP feedback validation boundary for five seconds
+    desc: Fuzz feedback parsing
     cmds:
       - go test ./internal/audit -run '^$' -fuzz '^FuzzFeedbackBoundary$' -fuzztime=5s -parallel=2
 
-  benchmark:audit:
-    desc: Measure report linting time and allocations
-    cmds:
-      - go test ./internal/audit -run '^$' -bench '^BenchmarkLintReport$' -benchmem -count=3 -benchtime=500ms
-
-  review:diff:
-    desc: Compare the working tree with a baseline snapshot (BASELINE)
-    requires:
-      vars: [BASELINE]
-    preconditions:
-      - sh: test -d "{{.BASELINE}}"
-        msg: Set BASELINE to the original working tree snapshot
-    cmds:
-      - |
-          diff -ruN --exclude=.git --exclude=bin "{{.BASELINE}}" "{{.ROOT_DIR}}" || test "$?" -eq 1
-
-  dev:
-    desc: Serve a spec folder (DIR, optional PORT)
-    vars:
-      DIR: '{{.DIR | default "."}}'
-      PORT: '{{.PORT | default "8765"}}'
-    cmds:
-      - go run ./cmd/spectre -dir "{{.DIR}}" -port "{{.PORT}}"
-
-  demo:setup:
-    desc: Prepare isolated ATC spec and Flightline audit examples
-    deps: [build]
-    env:
-      AUDIT_REPORT_HOME: '{{.DEMO_DIR}}/index'
-      XDG_CACHE_HOME: '{{.DEMO_DIR}}/cache'
-    cmds:
-      - mkdir -p "{{.DEMO_DIR}}/spec" "{{.DEMO_DIR}}/project"
-      - |
-          for demo_source in internal/spec/testdata/atc-spec/*.md; do
-            demo_target="{{.DEMO_DIR}}/spec/${demo_source##*/}"
-            if [ ! -e "$demo_target" ]; then
-              cp "$demo_source" "$demo_target"
-            fi
-          done
-      - '"{{.ROOT_DIR}}/bin/spectre" audit init --project "{{.DEMO_DIR}}/project" --source "{{.ROOT_DIR}}/internal/audit/testdata/example/report.json" > "{{.DEMO_DIR}}/audit-context.json"'
-
-  demo:spec:
-    desc: Serve the example spec (PORT defaults to 8765; run demo:setup first)
-    vars:
-      PORT: '{{.PORT | default "8765"}}'
-    preconditions:
-      - sh: test -f "{{.DEMO_DIR}}/spec/requirements.md"
-        msg: Run task demo:setup first
-    cmds:
-      - '"{{.ROOT_DIR}}/bin/spectre" -dir "{{.DEMO_DIR}}/spec" -port "{{.PORT}}"'
-
-  demo:audit:
-    desc: Serve the example audit (PORT defaults to 8766; run demo:setup first)
-    vars:
-      PORT: '{{.PORT | default "8766"}}'
-    env:
-      AUDIT_REPORT_HOME: '{{.DEMO_DIR}}/index'
-      XDG_CACHE_HOME: '{{.DEMO_DIR}}/cache'
-    preconditions:
-      - sh: test -f "{{.DEMO_DIR}}/project/.audit-report.json"
-        msg: Run task demo:setup first
-    cmds:
-      - '"{{.ROOT_DIR}}/bin/spectre" audit view --project "{{.DEMO_DIR}}/project" --port "{{.PORT}}"'
-
-  audit:check:
-    desc: Validate the imported audit-report example and starter in Go
-    cmds:
-      - go run ./cmd/spectre audit build internal/audit/testdata/example/report.json --check --strict
-      - go run ./cmd/spectre audit build internal/audit/templates/report.starter.json --check --strict
-
-  skill:check:
-    desc: Validate the audit skill (VALIDATOR points to skill-creator/scripts/quick_validate.py)
-    requires:
-      vars: [VALIDATOR]
-    preconditions:
-      - sh: test -f "{{.VALIDATOR}}"
-        msg: Set VALIDATOR to skill-creator/scripts/quick_validate.py
-    cmds:
-      - python3 "{{.VALIDATOR}}" internal/audit
-
-  check:browser:
-    desc: Verify shared spec/audit styles, theme, feedback, and layouts in Chromium (BROWSER; Node 22 is a development-only driver)
+  test:browser:
+    desc: Run browser tests with Linux Chromium (BROWSER)
+    aliases: ['check:browser']
     deps: [build]
     requires:
       vars: [BROWSER]
     preconditions:
-      - sh: test -x "{{.BROWSER}}"
-        msg: Set BROWSER to an installed Chromium executable
+      - sh: test -x {{.BROWSER | shellQuote}}
+        msg: BROWSER must point to a Linux Chromium executable
       - sh: node -e 'if (Number(process.versions.node.split(".")[0]) < 22) process.exit(1)'
-        msg: This optional browser test driver requires Node 22
+        msg: Browser tests require Node 22
     cmds:
-      - node scripts/check-browser.mjs "{{.BROWSER}}" "{{.ROOT_DIR}}/bin/spectre"
+      - node scripts/check-browser.mjs {{.BROWSER | shellQuote}} {{.BIN | shellQuote}}
+
+  benchmark:audit:
+    desc: Benchmark report linting
+    cmds:
+      - go test ./internal/audit -run '^$' -bench '^BenchmarkLintReport$' -benchmem -count=3 -benchtime=500ms
+
+  audit:check:
+    desc: Validate bundled audit reports
+    deps: [build]
+    cmds:
+      - '{{.BIN | shellQuote}} audit build internal/audit/testdata/example/report.json --check --strict'
+      - '{{.BIN | shellQuote}} audit build docs/audit/templates/report.starter.json --check --strict'
+
+  skill:check:
+    desc: Validate skills (VALIDATOR)
+    requires:
+      vars: [VALIDATOR]
+    preconditions:
+      - sh: test -f {{.VALIDATOR | shellQuote}}
+        msg: VALIDATOR must point to skill-creator/scripts/quick_validate.py
+    cmds:
+      - python3 {{.VALIDATOR | shellQuote}} .
+      - python3 {{.VALIDATOR | shellQuote}} docs/audit
+
+  vuln:
+    desc: Check Go vulnerabilities
+    cmds:
+      - go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
   verify:
-    desc: Check formatting, analysis, tests, and build
+    desc: Run all Go checks
     cmds:
       - task: format:check
       - task: lint

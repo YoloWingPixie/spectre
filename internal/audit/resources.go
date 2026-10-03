@@ -7,21 +7,34 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	auditdocs "github.com/YoloWingPixie/spectre/docs/audit"
 )
 
-//go:embed assets schema templates SKILL.md docs
+//go:embed assets
 var resources embed.FS
+
+func walkResources(visit func(string, []byte) error) error {
+	for _, bundle := range []fs.FS{resources, auditdocs.Files} {
+		if err := fs.WalkDir(bundle, ".", func(path string, entry fs.DirEntry, err error) error {
+			if err != nil || entry.IsDir() {
+				return err
+			}
+			data, err := fs.ReadFile(bundle, path)
+			if err != nil {
+				return err
+			}
+			return visit(path, data)
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 func resourceDir() (string, error) {
 	hash := sha256.New()
-	err := fs.WalkDir(resources, ".", func(path string, entry fs.DirEntry, err error) error {
-		if err != nil || entry.IsDir() {
-			return err
-		}
-		data, err := resources.ReadFile(path)
-		if err != nil {
-			return err
-		}
+	err := walkResources(func(path string, data []byte) error {
 		fmt.Fprintf(hash, "%d:%s:%d:", len(path), path, len(data))
 		hash.Write(data)
 		return nil
@@ -46,16 +59,9 @@ func resourceDir() (string, error) {
 		return "", err
 	}
 	defer os.RemoveAll(temporary)
-	err = fs.WalkDir(resources, ".", func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
+	err = walkResources(func(path string, data []byte) error {
 		target := filepath.Join(temporary, filepath.FromSlash(path))
-		if entry.IsDir() {
-			return os.MkdirAll(target, 0o700)
-		}
-		data, err := resources.ReadFile(path)
-		if err != nil {
+		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 			return err
 		}
 		return os.WriteFile(target, data, 0o600)

@@ -15,7 +15,11 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	auditdocs "github.com/YoloWingPixie/spectre/docs/audit"
 )
+
+const starterReport = "../../docs/audit/templates/report.starter.json"
 
 func fixture(t *testing.T) (auditOptions, resumeResult) {
 	t.Helper()
@@ -27,7 +31,7 @@ func fixture(t *testing.T) (auditOptions, resumeResult) {
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(directory, "cache"))
 	t.Setenv("AUDIT_REPORT_HOME", filepath.Join(directory, "index"))
 	options := auditOptions{Project: project}
-	result, err := initAudit(t.Context(), options, "templates/report.starter.json", false)
+	result, err := initAudit(t.Context(), options, starterReport, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +65,7 @@ func mustJSON(t *testing.T, value any) []byte {
 
 func TestImportedReportsBuildWithoutExternalRuntime(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	for _, path := range []string{"templates/report.starter.json", "testdata/example/report.json"} {
+	for _, path := range []string{starterReport, "testdata/example/report.json"} {
 		t.Run(path, func(t *testing.T) {
 			output := filepath.Join(t.TempDir(), "report.html")
 			var diagnostics bytes.Buffer
@@ -85,7 +89,7 @@ func TestImportedReportsBuildWithoutExternalRuntime(t *testing.T) {
 }
 
 func TestValidationPreventsInvalidBuilds(t *testing.T) {
-	data := mustRead(t, "templates/report.starter.json")
+	data := mustRead(t, starterReport)
 	tests := []struct {
 		name   string
 		mutate func(map[string]any)
@@ -132,7 +136,7 @@ func TestValidationPreventsInvalidBuilds(t *testing.T) {
 }
 
 func TestRenderingEscapesReportText(t *testing.T) {
-	doc, err := readReport("templates/report.starter.json", false)
+	doc, err := readReport(starterReport, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +215,7 @@ func TestLegacyStateAndFeedbackArePreserved(t *testing.T) {
 	const projectID = "a5c418f5-19c6-44c4-a102-b5975f6ab125"
 	const auditID = "cb4249e0-29eb-4ee0-8a2c-501764fab011"
 	dir := filepath.Join(directory, "legacy.audits", auditID)
-	reportData := mustRead(t, "templates/report.starter.json")
+	reportData := mustRead(t, starterReport)
 	mustWrite(t, filepath.Join(dir, reportFile), reportData)
 	state := fmt.Sprintf(`{"version":1,"projectId":%q,"dataDir":"../legacy.audits","activeAuditId":%q,"audits":[{"id":%q,"status":"awaiting-review","checkpoint":{"updatedAt":"2026-09-26T18:00:00.000Z","completed":["Read authentication"],"nextSteps":["Review feedback"],"repository":{"head":null,"fingerprint":null},"reportRevision":%q}}]}`, projectID, auditID, auditID, digest(reportData))
 	mustWrite(t, filepath.Join(project, stateFile), []byte(state))
@@ -263,8 +267,8 @@ func TestImportIsIdempotentAndProtectsConflicts(t *testing.T) {
 }
 
 func TestViewerSavesFeedbackAndRejectsUnsafeRequests(t *testing.T) {
-	options, _ := fixture(t)
-	v, err := startViewer(options, 0)
+	options, created := fixture(t)
+	v, err := startViewer(options, 0, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,14 +326,20 @@ func TestViewerSavesFeedbackAndRejectsUnsafeRequests(t *testing.T) {
 		{"foreign origin", "PUT", "", "https://evil.example", token, mustJSON(t, input), 403},
 		{"no origin", "PUT", "", "", token, mustJSON(t, input), 403},
 		{"no token", "GET", "", "", "", nil, 403},
+		{"write without token", "PUT", "", origin, "", mustJSON(t, input), 403},
+		{"write with wrong token", "PUT", "", origin, "wrong", mustJSON(t, input), 403},
 		{"malformed JSON", "PUT", "", origin, token, []byte("{"), 400},
 		{"missing revision", "PUT", "", origin, token, []byte(`{"findingId":"SEC-01","content":{},"reportRevision":"x"}`), 422},
 		{"oversize body", "PUT", "", origin, token, bytes.Repeat([]byte("x"), feedbackBodyLimit+1), 413},
 		{"unsupported method", "POST", "", origin, token, nil, 405},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			before := mustRead(t, created.Paths.Feedback)
 			if got := request(test.method, test.host, test.origin, test.token, test.body); got != test.code {
 				t.Fatalf("status %d, want %d", got, test.code)
+			}
+			if !bytes.Equal(before, mustRead(t, created.Paths.Feedback)) {
+				t.Fatal("rejected request changed feedback")
 			}
 		})
 	}
@@ -362,12 +372,48 @@ func TestViewerSavesFeedbackAndRejectsUnsafeRequests(t *testing.T) {
 	if err := v.close(); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := startViewer(options, 0)
+	reopened, err := startViewer(options, 0, io.Discard)
 	if err != nil {
 		t.Fatal("viewer lock was not released", err)
 	}
 	if err := reopened.close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestViewerLogsUnexpectedFailure(t *testing.T) {
+	options, created := fixture(t)
+	logPath := filepath.Join(t.TempDir(), "viewer.log")
+	diagnostics, err := os.Create(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer diagnostics.Close()
+	v, err := startViewer(options, 0, diagnostics)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.close()
+	if err := os.Remove(created.Paths.Report); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(created.Paths.Report, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.Get(v.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != 500 || bytes.Contains(body, []byte(created.Paths.Report)) {
+		t.Fatalf("unexpected error response: %d %s", response.StatusCode, body)
+	}
+	if log := string(mustRead(t, logPath)); !strings.Contains(log, created.Paths.Report) || !strings.Contains(log, "is a directory") {
+		t.Fatalf("missing filesystem cause: %s", log)
 	}
 }
 
@@ -487,6 +533,15 @@ func TestSetupPreservesExistingSkillsAndWorksWithoutNode(t *testing.T) {
 	if !bytes.Contains(mustRead(t, filepath.Join(target, "SKILL.md")), []byte("spectre audit resume")) {
 		t.Fatal("installed instructions do not use Spectre")
 	}
+	for _, path := range []string{"SKILL.md", "checklist.md", "resuming-audits.md", "writing-guide.md", "schema/report.schema.json", "schema/project-state.schema.json", "templates/report.starter.json"} {
+		want, err := auditdocs.Files.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(mustRead(t, filepath.Join(target, path)), want) {
+			t.Errorf("installed %s differs from bundled documentation", path)
+		}
+	}
 	if err := Run(t.Context(), args, &out, io.Discard); err != nil {
 		t.Fatal(err)
 	}
@@ -510,7 +565,7 @@ func TestSetupPreservesExistingSkillsAndWorksWithoutNode(t *testing.T) {
 
 func TestAbsoluteScreenshotImportKeepsTheLegacyContract(t *testing.T) {
 	options, _ := fixture(t)
-	doc, err := readReport("templates/report.starter.json", true)
+	doc, err := readReport(starterReport, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -632,7 +687,7 @@ func TestFailedImportPreservesFeedbackWhenReportCannotBeRead(t *testing.T) {
 }
 
 func TestReportAcceptsIntegralJSONNumbers(t *testing.T) {
-	data := bytes.Replace(mustRead(t, "templates/report.starter.json"), []byte(`"line": 42`), []byte(`"line": 42.0`), 1)
+	data := bytes.Replace(mustRead(t, starterReport), []byte(`"line": 42`), []byte(`"line": 42.0`), 1)
 	doc, err := parseReport(data, ".", false)
 	if err != nil {
 		t.Fatal(err)

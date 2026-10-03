@@ -29,7 +29,7 @@ func TestMarkdownCodeAndInlineReferences(t *testing.T) {
 }
 
 func TestReportSeverityOrderingAndCounts(t *testing.T) {
-	doc, err := readReport("templates/report.starter.json", false)
+	doc, err := readReport(starterReport, false)
 	if err != nil {
 		t.Fatal(err)
 	}

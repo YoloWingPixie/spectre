@@ -1,5 +1,5 @@
 {
-  "$schema": "../schema/report.schema.json",
+  "$schema": "../../../../docs/audit/schema/report.schema.json",
   "title": "Flightline Codebase Audit",
   "project": "flightline",
   "repoRoot": "/mnt/c/git/vcsg8/flightline",

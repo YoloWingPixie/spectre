@@ -131,7 +131,7 @@ func Run(ctx context.Context, args []string, out, diagnostics io.Writer) (err er
 	case listCommand:
 		result, err = listProjects()
 	case viewCommand:
-		v, startErr := startViewer(options, port)
+		v, startErr := startViewer(options, port, diagnostics)
 		if startErr != nil {
 			return startErr
 		}

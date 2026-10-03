@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -26,10 +27,11 @@ type viewer struct {
 	closeErr error
 }
 
-func startViewer(options auditOptions, port int) (*viewer, error) {
+func startViewer(options auditOptions, port int, diagnostics io.Writer) (*viewer, error) {
 	if port < 0 || port > 65535 {
 		return nil, invalid("Port must be an integer from 0 to 65535")
 	}
+	log := slog.New(slog.NewTextHandler(diagnostics, nil))
 	c, err := loadAudit(options)
 	if err != nil {
 		return nil, err
@@ -149,6 +151,8 @@ func startViewer(options auditOptions, port int) (*viewer, error) {
 			if errors.As(err, &problem) {
 				code = problem.status
 				message = problem.message
+			} else {
+				log.Error("audit viewer request failed", "method", r.Method, "path", r.URL.Path, "err", err)
 			}
 			_ = sendJSON(w, code, map[string]string{"error": message})
 		}

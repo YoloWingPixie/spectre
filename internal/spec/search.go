@@ -5,6 +5,7 @@ import (
 	"html"
 	"html/template"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -183,29 +184,40 @@ func snippet(text string, words []string) template.HTML {
 		end++
 	}
 	ex := plain[start:end]
-	out := html.EscapeString(ex)
-	if len(lower) == len(plain) && len(words) > 0 {
-		// Highlight on the escaped text, case-insensitively.
-		for _, w := range words {
-			ew := html.EscapeString(w)
-			lo := strings.ToLower(out)
-			var b strings.Builder
-			pos := 0
-			for {
-				i := strings.Index(lo[pos:], ew)
-				if i < 0 || ew == "" {
-					break
+	original := []rune(ex)
+	folded := []rune(strings.ToLower(ex))
+	marked := make([]bool, len(original))
+	for _, word := range words {
+		match := []rune(word)
+		if len(match) == 0 {
+			continue
+		}
+		for pos := 0; pos+len(match) <= len(folded); pos++ {
+			if slices.Equal(folded[pos:pos+len(match)], match) {
+				for i := pos; i < pos+len(match); i++ {
+					marked[i] = true
 				}
-				b.WriteString(out[pos : pos+i])
-				b.WriteString("<mark>" + out[pos+i:pos+i+len(ew)] + "</mark>")
-				pos += i + len(ew)
-			}
-			b.WriteString(out[pos:])
-			if len(lo) == len(out) {
-				out = b.String()
 			}
 		}
 	}
+	var rendered strings.Builder
+	// Case-insensitive matches use rune positions because lowercasing can change UTF-8 widths.
+	// Generated tags must not become match input.
+	for first := 0; first < len(original); {
+		last := first + 1
+		for last < len(original) && marked[last] == marked[first] {
+			last++
+		}
+		if marked[first] {
+			rendered.WriteString("<mark>")
+		}
+		rendered.WriteString(html.EscapeString(string(original[first:last])))
+		if marked[first] {
+			rendered.WriteString("</mark>")
+		}
+		first = last
+	}
+	out := rendered.String()
 	if start > 0 {
 		out = "…" + out
 	}

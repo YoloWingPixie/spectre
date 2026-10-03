@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	auditdocs "github.com/YoloWingPixie/spectre/docs/audit"
 )
 
 const buildUsage = `Usage:
@@ -81,6 +83,13 @@ func buildCommand(args []string, out, diagnostics io.Writer) error {
 	if output == "" {
 		output = strings.TrimSuffix(input, filepath.Ext(input)) + ".html"
 	}
+	if doc.Report.ID == "" {
+		absolute, err := filepath.Abs(input)
+		if err != nil {
+			return err
+		}
+		doc.Report.ID = reportID("path-" + digest([]byte(absolute)))
+	}
 	images, err := collectImages(doc.Report, filepath.Dir(input), output, false)
 	if err != nil {
 		return err
@@ -99,7 +108,7 @@ func buildCommand(args []string, out, diagnostics io.Writer) error {
 	return err
 }
 func initReport(path string, diagnostics io.Writer) error {
-	data, err := resources.ReadFile("templates/report.starter.json")
+	data, err := auditdocs.Files.ReadFile("templates/report.starter.json")
 	if err != nil {
 		return err
 	}
@@ -115,6 +124,11 @@ func initReport(path string, diagnostics io.Writer) error {
 		return err
 	}
 	r := doc.Report
+	id, err := uuid()
+	if err != nil {
+		return err
+	}
+	r.ID = reportID(id)
 	r.Schema = filepath.Join(directory, "schema/report.schema.json")
 	r.Date = time.Now().UTC().Format(time.DateOnly)
 	if distro := os.Getenv("WSL_DISTRO_NAME"); distro != "" {

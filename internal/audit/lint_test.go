@@ -34,7 +34,7 @@ func TestLintPhraseMatchingAndOrder(t *testing.T) {
 }
 
 func BenchmarkLintReport(b *testing.B) {
-	doc, err := readReport("templates/report.starter.json", false)
+	doc, err := readReport(starterReport, false)
 	if err != nil {
 		b.Fatal(err)
 	}

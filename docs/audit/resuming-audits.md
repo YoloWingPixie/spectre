@@ -1,5 +1,10 @@
 # Resume an audit
 
+This guide is for the agent operating Spectre on the user's project. You
+prepare the audit, present it in the browser, and read the user's saved
+feedback to continue. The user reviews findings and chooses responses;
+Spectre stores that feedback for you to retrieve.
+
 The installed `spectre-audit` skill uses `spectre audit` from PATH. Keep the audited project as your working directory. Quote paths containing spaces. The Go executable contains the engine, schemas, and browser assets. Node, npm, and Task are not required at runtime.
 
 ## Start or resume
@@ -52,7 +57,17 @@ Supported states are `in-progress`, `awaiting-review`, and `complete`. Save afte
 spectre audit view --project /path/to/my-project
 ```
 
-Open the printed local URL. Keep the command running while using that page. Decisions and notes save to `feedback.json` after selection or leaving an edited field. Wait for **Saved to the audit folder** before closing the page. The agent reads these records on its next resume.
+Run the viewer in a persistent terminal, verify the printed local URL, and
+give it to the user with a short explanation of what needs review. Keep the
+command running while they use the page. If your environment cannot keep it
+running or expose the local URL to their browser, give them the command to
+run on their machine.
+
+The user's decisions and notes save to `feedback.json` after selection or
+leaving an edited field. Tell them to wait for **Saved to the audit folder**
+before closing the page. When they ask you to continue, run `resume` again
+and read `feedback` and `feedbackReview` before editing the report or proposing
+next actions. Local saves do not automatically notify the agent in chat.
 
 Failed saves leave the edits in the page and show **Retry saving**. For a conflict, use **Copy feedback JSON** to preserve unsaved edits, reload, and review the newer saved data before applying changes. Unsaved edits do not survive closing the page. After restarting the viewer, open its newly printed URL.
 
@@ -86,5 +101,17 @@ spectre audit build "/path/to/my-project.audits/<audit-id>/report.json" --strict
 ```
 
 Standalone files keep browser-local feedback. Hosted artifacts keep their existing database feedback. Neither automatically synchronizes with the local audit folder.
+
+New audit reports and `build --init` starters contain a `reportId`. Preserve it
+when editing or moving the report. Use a new ID for a separate report.
+For older JSON without this field, standalone builds use the absolute source
+path as their storage identity and leave the source unchanged. Moving that
+source changes its browser storage identity; export feedback before moving it.
+
+If feedback exists under the older title-and-commit key, the page offers
+**Import older feedback for this report**. Use it only after confirming that
+the feedback belongs to this report. Import preserves current decisions,
+drafts, and the original browser copy. It does not affect persistent viewer
+feedback, which already belongs to an audit ID.
 
 Do not edit `feedback.json` while a viewer or import is writing it. The commands use lock files and atomic replacement. After a hard process termination, an error may name a remaining lock and the owning process ID. Verify that process has exited before removing its lock. A viewer lock is `<audit-directory>/.viewer.lock`; write locks end in `.lock`. Never remove the underlying report or feedback file to resolve a lock.

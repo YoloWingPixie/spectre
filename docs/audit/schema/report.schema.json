@@ -7,6 +7,7 @@
   "required": ["title", "project", "repoRoot", "date", "scope", "areas", "findings"],
   "additionalProperties": false,
   "properties": {
+    "reportId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$", "description": "Stable standalone feedback identity. Preserve it across edits; assign a new value for a separate report." },
     "$schema": { "type": "string", "description": "Optional pointer to this schema for editor completion." },
     "title": { "type": "string", "minLength": 1, "description": "Page title and H1, e.g. \"Flightline Codebase Audit\"." },
     "project": { "type": "string", "minLength": 1, "description": "Short project name shown in the header meta line." },

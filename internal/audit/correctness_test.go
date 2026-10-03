@@ -2,7 +2,9 @@ package audit
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -10,11 +12,26 @@ import (
 	"testing"
 )
 
+func TestCanceledCheckpointPreservesState(t *testing.T) {
+	options, initial := fixture(t)
+	path := filepath.Join(options.Project, stateFile)
+	before := mustRead(t, path)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err := checkpointAudit(ctx, options, checkpointInput{Completed: []string{"Canceled"}, NextSteps: []string{}, Status: complete}, initial.ProjectRevision)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("got %v, want cancellation", err)
+	}
+	if !bytes.Equal(before, mustRead(t, path)) {
+		t.Error("canceled checkpoint replaced saved state")
+	}
+}
+
 func TestReportRejectsFieldAliases(t *testing.T) {
 	for _, alias := range []string{"reporoot", "endline"} {
 		t.Run(alias, func(t *testing.T) {
 			var r map[string]any
-			if err := json.Unmarshal(mustRead(t, "templates/report.starter.json"), &r); err != nil {
+			if err := json.Unmarshal(mustRead(t, starterReport), &r); err != nil {
 				t.Fatal(err)
 			}
 			if alias == "reporoot" {
@@ -45,7 +62,7 @@ func TestReportNumbersRemainExact(t *testing.T) {
 		{"1.0000000000000001", 0, false}, {"1e-400", 0, false}, {"9223372036854775808", 0, false},
 	} {
 		t.Run(test.value, func(t *testing.T) {
-			data := bytes.Replace(mustRead(t, "templates/report.starter.json"), []byte(`"line": 42`), []byte(`"line": `+test.value), 1)
+			data := bytes.Replace(mustRead(t, starterReport), []byte(`"line": 42`), []byte(`"line": `+test.value), 1)
 			data = bytes.Replace(data, []byte(`"endLine": 58`), []byte(`"endLine": `+test.value), 1)
 			doc, err := parseReport(data, ".", false)
 			if err == nil {
@@ -71,7 +88,7 @@ func TestReportNumbersRemainExact(t *testing.T) {
 }
 
 func TestSchemaBoundaryPreservesCompatibility(t *testing.T) {
-	data := mustRead(t, "templates/report.starter.json")
+	data := mustRead(t, starterReport)
 	if _, _, err := validateJSON(append(bytes.Clone(data), []byte(` {}`)...), "report.schema.json", false); err == nil {
 		t.Fatal("trailing JSON accepted")
 	}
@@ -138,6 +155,8 @@ func TestCopiedProjectRejectedBeforeMutation(t *testing.T) {
 				t.Fatal(err)
 			}
 			beforeIndex := mustRead(t, index)
+			beforeReport := mustRead(t, created.Paths.Report)
+			beforeFeedback := mustRead(t, created.Paths.Feedback)
 			entries, err := os.ReadDir(filepath.Dir(created.Paths.Report))
 			if err != nil {
 				t.Fatal(err)
@@ -165,6 +184,9 @@ func TestCopiedProjectRejectedBeforeMutation(t *testing.T) {
 			after, err := os.ReadDir(auditRoot)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if !bytes.Equal(beforeReport, mustRead(t, created.Paths.Report)) || !bytes.Equal(beforeFeedback, mustRead(t, created.Paths.Feedback)) {
+				t.Error("rejected operation changed audit content")
 			}
 			if len(after) != len(audits) {
 				t.Error("rejected operation created audit files")

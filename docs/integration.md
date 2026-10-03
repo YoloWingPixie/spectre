@@ -2,6 +2,14 @@
 
 Spectre combines Markdown spec review with the audit-report workflow in one Go executable. Spec review remains the default mode. Audit mode is selected with `spectre audit`.
 
+The intended operator is an LLM agent working for a user. The agent prepares
+the specification or audit report, starts Spectre, and presents the review
+URL. The user records feedback in the browser. The agent reads that feedback
+when asked to continue and updates the work within the user's instructions.
+Spectre owns presentation and feedback storage; the agent owns analysis and
+requested source changes. See [the operating skill](../SKILL.md) and
+[repository instructions](../AGENTS.md).
+
 ## Definitions and constraints
 
 A spec is the existing six-file Markdown folder. An audit contains a JSON report, reader feedback, and a checkpoint. The existing `.audit-report.json` dotfile owns audit identities and points to the sibling audit directory.
@@ -35,6 +43,12 @@ A spec is the existing six-file Markdown folder. An audit contains a JSON report
 - REQ-020: Option-note lookup shall use only explicitly stored properties, including for identifiers such as `constructor`.
 - REQ-021: Local restoration shall merge saved feedback with pending edits without overwriting edited controls.
 - REQ-022: Write responses shall be constructed from the operation's captured audit data without repeating registration.
+- REQ-023: Scenario headings before the first section shall retain item identity, search, and review behavior.
+- REQ-024: Search highlighting shall emit each original snippet segment once, including for repeated or overlapping terms.
+- REQ-025: A checkpoint canceled during repository discovery shall leave saved project state unchanged.
+- REQ-026: Standalone feedback shall be isolated by stable report identity rather than title and commit.
+- REQ-027: Legacy browser feedback shall require reader confirmation before import into an identified report.
+- REQ-028: Unexpected audit viewer failures shall record their cause locally without exposing feedback or tokens.
 
 ## Quality requirements
 
@@ -48,13 +62,18 @@ A spec is the existing six-file Markdown folder. An audit contains a JSON report
 
 The command selects `internal/spec` or `internal/audit`. Each package owns its own input format and feedback storage. Audit schemas and browser assets come from audit-report. Go owns report validation, rendering, storage, HTTP serving, and agent setup. JavaScript runs only in the browser.
 
+Audit instructions, schemas, and the starter report live in `docs/audit`.
+Its small Go package embeds those files directly. This source-layout exception
+to GO-011 keeps one authoritative copy under `docs`; `go:embed` cannot read
+files from a parent directory. Runtime implementation remains in `internal`.
+
 Retain the existing CSS and browser scripts. The artifact contract and the no-dependency constraint take precedence over UI-012 and UI-013 and their styling and application-layer rules. This exception covers the embedded spec and audit pages. The integration does not introduce a frontend build pipeline.
 
 Shared presentation belongs to `internal/webui`. It owns the application header, visual tokens, base controls, and theme preference. The mode packages retain their document layouts and feedback behavior. Both modes use the spec viewer's system fonts, neutral surfaces, blue accents, and rounded controls. This shared boundary centralizes the application style under ARCH-002/014 and UI-001/011; the existing CSS exception remains in effect.
 
 Keep `.audit-report.json`, `AUDIT_REPORT_HOME`, and `~/.audit-report/projects.json` for compatibility. New skill registration uses `spectre-audit` and does not replace an existing audit-report registration. Embedded schemas and agent instructions are materialized in a versioned user cache when needed.
 
-Installed users run Spectre directly. Task is the development interface. This is a scoped TASK-007 exception for distribution as one Go executable; development and verification tasks call the same Go command.
+Agents run the installed Spectre executable directly. Task is the development interface. This is a scoped TASK-007 exception for distribution as one Go executable; development and verification tasks call the same Go command.
 
 These boundaries follow ARCH-001/002/020/027, IMPL-005/013, DM-004/005, and GO-010/011/012. Repository checks follow TASK-001/004 and TEST-005/012.
 
@@ -76,8 +95,12 @@ These boundaries follow ARCH-001/002/020/027, IMPL-005/013, DM-004/005, and GO-0
 | AC-012: Interleaving initialization and response collection retains the selected identity; copied-project init and checkpoint conflicts leave state, index, and audit files unchanged. | REQ-015, REQ-016, NFR-001 | Test |
 | AC-013: Corrupt feedback and invalid initial indexes fail before state creation or mutation; response collection does not repeat registration; conflicting identity aliases preserve saved bytes. | REQ-017, REQ-018, REQ-019, REQ-022 | Test |
 | AC-014: Inherited property names remain blank until explicitly edited; delayed local loading retains drafts, untouched controls, and retired feedback through subsequent saves and export. | REQ-020, REQ-021 | Browser regression test |
+| AC-015: Introduction scenarios remain addressable; repeated, overlapping, and escaped search terms produce bounded valid highlighting. | REQ-023, REQ-024 | Test |
+| AC-016: Canceled checkpoints preserve state bytes; unauthorized PUTs and rejected copied-project operations preserve feedback and report bytes. | REQ-025, REQ-016, NFR-003 | Test |
+| AC-017: Same-title standalone reports keep separate feedback; legacy import requires confirmation and preserves pending edits. | REQ-026, REQ-027 | Browser test |
+| AC-018: A viewer filesystem failure records its cause locally and returns a generic browser error. | REQ-028 | Integration test |
 
-Run `task test:audit` for the changed workflow and `task verify` for formatting, static analysis, race tests, vulnerability analysis, and build. Run `task check:browser` with Chromium for disk feedback, restart, conflicting tabs, and layouts at 1280px and 400px.
+Run `task test:audit` for the changed workflow and `task verify` for formatting, static analysis, race tests, vulnerability analysis, and build. Run `task test:browser` with Chromium for disk feedback, restart, conflicting tabs, and layouts at 1280px and 400px.
 
 Run `task benchmark:audit` to measure linting time and allocations with 1 and 100 findings. Fixed phrase rules compile once, while matching and diagnostic order remain covered by regression tests. Multiline sentence tests cover LF, CRLF, and blank-line separators. Feedback tests cover case-insensitive null-note rejection and preservation of saved data when an import cannot read its report (NFR-001, AC-003).
 
@@ -97,7 +120,15 @@ Legacy reports use POSIX paths. Windows audit workflows require WSL. Existing so
 
 ## Completion evidence
 
-AC-001 through AC-008 passed through `task verify`, `task test:audit`, `task test:fuzz`, `task check:browser`, `task skill:check`, and inspection. The built executable reports Go 1.26.6 and `CGO_ENABLED=0`. The binary integration test runs default spec mode, explicit spec mode, audit initialization, resume, standalone generation, and both viewers with an empty PATH.
+AC-015 through AC-018 pass with the audit fixes. `task verify` covers scenario
+identity, bounded Unicode-safe highlighting, canceled checkpoints, rejected
+writes, persistent report IDs, and local failure diagnostics. Linux Chromium
+checks cover report isolation, confirmed legacy import, storage failure, and
+draft preservation. Windows Chrome now fails before fixture setup with the
+Linux Chromium prerequisite message. These checks apply IMPL-008, TEST-006/025,
+and GO-027/030/036; hosted artifact behavior remains unverified.
+
+AC-001 through AC-008 passed through `task verify`, `task test:audit`, `task test:fuzz`, browser checks, `task skill:check`, and inspection. The built executable reports Go 1.26.6 and `CGO_ENABLED=0`. The binary integration test runs default spec mode, explicit spec mode, audit initialization, resume, standalone generation, and both viewers with an empty PATH.
 
 The Chromium check exercised disk saving, restored notes and decisions, conflicting tabs, locked writes, retry, offline edits, and server restart. Viewer and standalone layouts passed at 1280px and 400px. The optional development browser driver uses Node 22; product commands do not.
 
@@ -111,12 +142,13 @@ The source audit-report working tree remains clean. The license and spec fixture
 
 ## Changed files
 
-- Root: `.gitignore`, `Makefile`, `README.md`, `Taskfile.yml`, `go.mod`, `docs/integration.md`.
+- Root: `.gitignore`, `AGENTS.md`, `SKILL.md`, `Makefile`, `README.md`, `Taskfile.yml`, `go.mod`, `docs/integration.md`.
 - Command: `cmd/specview/main.go` moved to `cmd/spectre/main.go`; `cmd/spectre/main_test.go` added.
 - Spec package: `internal/specview/` moved to `internal/spec/`. Its Go files are `asoc_spec_test.go`, `link.go`, `link_test.go`, `markdown.go`, `review.go`, `review_test.go`, `search.go`, `server.go`, `server_test.go`, `spec.go`, and `spec_test.go`. Branding and theme changes also affect `assets/app.js` and `assets/tmpl/layout.html`. Other templates, CSS, and spec fixtures moved without content changes.
 - Audit package: `internal/audit/model.go`, `schema.go`, `report.go`, `render.go`, `storage.go`, `feedback.go`, `viewer.go`, `build.go`, `command.go`, `setup.go`, `resources.go`, `lint.go`, `audit_test.go`, `schema_test.go`, `render_test.go`, `lint_test.go`, `correctness_test.go`, `persistence_test.go`, and `feedback_fuzz_test.go` added. The schema engine owns validation shared by report and project-state parsing; report-specific checks remain in `report.go`.
 - Audit assets: `internal/audit/assets/style.css`, `script.js`, `feedback.js`, `links-helpers.js`, `feedback-helpers.js`, and `report.html` added.
-- Audit schemas and example: `internal/audit/schema/report.schema.json`, `project-state.schema.json`, `templates/report.starter.json`, `testdata/example/report.json`, and `testdata/example/shots/wiki-desktop-night.jpg` added.
-- Audit instructions: `internal/audit/SKILL.md`, `docs/resuming-audits.md`, and `docs/writing-guide.md` added.
+- Audit schemas and starter: `docs/audit/schema/report.schema.json`, `docs/audit/schema/project-state.schema.json`, and `docs/audit/templates/report.starter.json`.
+- Audit example: `internal/audit/testdata/example/report.json` and `internal/audit/testdata/example/shots/wiki-desktop-night.jpg`.
+- Audit instructions: `docs/audit/SKILL.md`, `docs/audit/checklist.md`, `docs/audit/resuming-audits.md`, `docs/audit/writing-guide.md`, and `docs/audit/commands.md`. `docs/audit/embed.go` bundles the runtime instructions and schemas, including the audit checklist.
 - Browser verification: `scripts/check-browser.mjs` added.
 - Shared presentation: `internal/webui/webui.go`, `assets/header.html`, `assets/style.css`, and `assets/theme.js` added. Integration changes affect `internal/spec/server.go`, `assets/tmpl/layout.html`, `assets/style.css`, and `assets/app.js`; `internal/audit/render.go`, `assets/report.html`, and `assets/style.css`; `scripts/check-browser.mjs`, `Taskfile.yml`, `README.md`, and this document.

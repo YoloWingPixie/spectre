@@ -1,11 +1,19 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, unlinkSync, openSync, readSync, closeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { once } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
+
+assert.equal(process.platform, "linux", "Browser checks require Linux and Linux Chromium.");
+const browserFile = openSync(process.argv[2], "r");
+try {
+  const header = Buffer.alloc(4);
+  readSync(browserFile, header, 0, header.length, 0);
+  assert.notEqual(header.subarray(0, 2).toString(), "MZ", "BROWSER must point to Linux Chromium, not Windows Chrome.");
+} finally { closeSync(browserFile); }
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const directory = mkdtempSync(join(tmpdir(), "audit-browser-"));
@@ -19,11 +27,12 @@ function run(...args) {
   return result.stdout;
 }
 function resume() { return JSON.parse(run("audit", "resume", "--project", project)); }
-JSON.parse(run("audit", "init", "--project", project, "--source", join(root, "internal/audit/templates/report.starter.json")));
+JSON.parse(run("audit", "init", "--project", project, "--source", join(root, "docs/audit/templates/report.starter.json")));
 const examplePath = join(directory, "example.html");
 run("audit", "build", join(root, "internal/audit/testdata/example/report.json"), "--strict", "-o", examplePath);
-const prototypeReport = JSON.parse(readFileSync(join(root, "internal/audit/templates/report.starter.json"), "utf8"));
+const prototypeReport = JSON.parse(readFileSync(join(root, "docs/audit/templates/report.starter.json"), "utf8"));
 prototypeReport.title = "Prototype option identifiers";
+prototypeReport.reportId = "browser-prototype";
 prototypeReport.findings[0].coas.forEach((coa, i) => { if (i < 2) coa.id = ["constructor", "toString"][i]; });
 const prototypeSource = join(directory, "prototype.json"), prototypePath = join(directory, "prototype.html");
 writeFileSync(prototypeSource, JSON.stringify(prototypeReport));
@@ -94,7 +103,8 @@ async function page(url, preload) {
     }
     throw new Error(`Browser condition failed: ${expression}`);
   };
-  await command("Page.navigate", { url }, sessionId);
+  const navigation = await command("Page.navigate", { url }, sessionId);
+  assert.equal(navigation.errorText, undefined, `Navigation failed for ${url}: ${navigation.errorText}`);
   await waitFor("document.readyState === 'complete' && !!document.querySelector('h1')");
   return { targetId, sessionId, evaluate, waitFor };
 }
@@ -257,7 +267,7 @@ try {
   assert.equal(await prototype.evaluate("copiedFeedback.findings['SEC-01'].coaNotes.constructor"), "Real constructor note");
   assert.equal(await prototype.evaluate("copiedFeedback.findings['SEC-01'].coaNotes.toString"), "Real toString note");
 
-  const localKey = "audit-report:feedback:" + prototypeReport.title + "@" + (prototypeReport.commit || "");
+  const localKey = "audit-report:feedback:v2:" + prototypeReport.reportId;
   const savedBeforeLoad = { "SEC-01": { findingId: "SEC-01", note: "Old saved note", decision: { type: "coa", coaId: "retired" }, coaNotes: { constructor: "Keep untouched option note", retired: "Keep retired note" }, notify: {} } };
   const delayed = await page(pathToFileURL(prototypePath).href, `localStorage.setItem(${JSON.stringify(localKey)}, ${JSON.stringify(JSON.stringify(savedBeforeLoad))});
     window.capabilityWaiters = [];
@@ -280,8 +290,43 @@ try {
   await delayed.evaluate(captureClipboard);
   await delayed.evaluate("document.querySelector('#fb-copy').click()");
   assert.equal(await delayed.evaluate("copiedFeedback.findings['SEC-01'].note"), "New pending draft");
+  const peer = { ...prototypeReport, reportId: "browser-peer", repoRoot: "/another/project" };
+  const peerSource = join(directory, "peer.json");
+  writeFileSync(peerSource, JSON.stringify(peer));
+  run("audit", "build", peerSource, "--strict", "-o", prototypePath);
+  const isolated = await page(pathToFileURL(prototypePath).href);
+  await isolated.waitFor("document.querySelector('#fb-hint').textContent.includes('saved in this browser only')");
+  assert.equal(await isolated.evaluate("document.querySelector('[data-fb=note]').value"), "", "Same-origin reports with the same title and commit must not share notes");
+  await isolated.evaluate(`var note = document.querySelector('[data-fb=note]'); note.value = 'Peer-only feedback'; note.dispatchEvent(new Event('change', { bubbles: true }));`);
+  await isolated.waitFor("document.querySelector('.fb-state').textContent === 'Saved on this device only'");
+  run("audit", "build", prototypeSource, "--strict", "-o", prototypePath);
+  const restoredStandalone = await page(pathToFileURL(prototypePath).href);
+  await restoredStandalone.waitFor("document.querySelector('[data-fb=note]').value === 'New pending draft'");
+
+  const migrationReport = structuredClone(prototypeReport);
+  migrationReport.reportId = "browser-migration";
+  migrationReport.findings.push({ ...structuredClone(migrationReport.findings[0]), id: "SEC-02" });
+  writeFileSync(peerSource, JSON.stringify(migrationReport));
+  run("audit", "build", peerSource, "--strict", "-o", prototypePath);
+  const legacyKey = "audit-report:feedback:" + prototypeReport.title + "@" + (prototypeReport.commit || "");
+  const legacyRecords = { "SEC-01": { findingId: "SEC-01", note: "Legacy note" }, "SEC-02": { findingId: "SEC-02", note: "Do not replace my draft" } };
+  const migration = await page(pathToFileURL(prototypePath).href, `localStorage.setItem(${JSON.stringify(legacyKey)}, ${JSON.stringify(JSON.stringify(legacyRecords))});`);
+  await migration.waitFor("!document.querySelector('#fb-import-legacy').hidden");
+  assert.equal(await migration.evaluate("document.querySelector('[data-fb=note]').value"), "", "Legacy feedback must await confirmation");
+  await migration.evaluate(`var draft = document.querySelector('#f-SEC-02 [data-fb=note]'); draft.value = 'Keep current draft'; draft.dispatchEvent(new Event('input', { bubbles: true }));
+    window.originalSetItem = Storage.prototype.setItem; Storage.prototype.setItem = function () { throw new Error('Blocked'); };
+    document.querySelector('#fb-import-legacy').click();`);
+  await migration.waitFor("document.querySelector('#fb-hint').textContent.includes('Could not import')");
+  assert.equal(await migration.evaluate("document.querySelector('[data-fb=note]').value"), "");
+  await migration.evaluate("Storage.prototype.setItem = originalSetItem; document.querySelector('#fb-import-legacy').click()");
+  await migration.waitFor("document.querySelector('[data-fb=note]').value === 'Legacy note'");
+  assert.equal(await migration.evaluate("document.querySelector('#f-SEC-02 [data-fb=note]').value"), "Keep current draft");
+  assert.deepEqual(await migration.evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(legacyKey)}))`), legacyRecords, "Migration must preserve the legacy copy");
+  const migratedReload = await page(pathToFileURL(prototypePath).href);
+  await migratedReload.waitFor("document.querySelector('[data-fb=note]').value === 'Legacy note'");
+
   assert.deepEqual(exceptions, []);
-  console.log("Browser checks passed: shared styles and theme, disk saves and recovery, hash-collision saves, retained feedback without options, standalone export after storage failure, inherited option identifiers, pending local edits, desktop and phone layouts.");
+  console.log("Browser checks passed: shared styles and theme, disk saves and recovery, hash-collision saves, retained feedback without options, standalone export after storage failure, inherited option identifiers, pending local edits, isolated report identities, confirmed legacy import, desktop and phone layouts.");
 } finally {
   await viewer.close();
   await specViewer.close();

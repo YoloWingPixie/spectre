@@ -224,7 +224,7 @@ func repositoryState(ctx context.Context, project string) (repository, error) {
 		return exec.CommandContext(ctx, "git", append([]string{"-C", project}, args...)...).Output()
 	}
 	if _, err := git("rev-parse", "--show-toplevel"); err != nil {
-		return repository{}, nil
+		return repository{}, ctx.Err()
 	}
 	var state repository
 	if head, err := git("rev-parse", "--verify", "HEAD"); err == nil {
@@ -525,6 +525,7 @@ func initializeAudit(ctx context.Context, options auditOptions, source string, n
 			if err != nil {
 				return nil, err
 			}
+			report.ID = reportID(id)
 			reportData, err := encode(report)
 			if err != nil {
 				return nil, err
@@ -649,6 +650,9 @@ func checkpointAudit(ctx context.Context, options auditOptions, input checkpoint
 		return resumeResult{}, err
 	}
 	committed, err := updateFile(c.StatePath, func(data []byte) ([]byte, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if err := expectRevision(digest(data), &revision); err != nil {
 			return nil, err
 		}

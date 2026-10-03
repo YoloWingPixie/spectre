@@ -5,9 +5,9 @@
 <main class="wrap">
 <header class="mast"><div class="mast-top"><span class="stamp">{{if .Stamp}}{{.Stamp}}{{else}}Discrepancy log{{end}}</span><span class="meta mono">{{.Project}} &middot; {{.Date}}{{if .Commit}} &middot; commit {{.Commit}}{{end}}{{if .Branch}} &middot; {{.Branch}}{{end}}</span></div>
 <h1>{{md .Title}}</h1><p class="scope">{{md .Scope}}</p>
-<div class="mast-tools" data-root="{{.RepoRoot}}" data-distro="{{.Distro}}" data-title="{{.Title}}" data-commit="{{.Commit}}"{{with .Viewer}} data-feedback-url="/feedback" data-feedback-token="{{.Token}}" data-report-revision="{{.ReportRevision}}"{{end}}>
+<div class="mast-tools" data-root="{{.RepoRoot}}" data-distro="{{.Distro}}" data-report-id="{{.ID}}" data-title="{{.Title}}" data-commit="{{.Commit}}"{{with .Viewer}} data-feedback-url="/feedback" data-feedback-token="{{.Token}}" data-report-revision="{{.ReportRevision}}"{{end}}>
 <label for="editor">Open file links in</label><select id="editor"><option value="vscode-wsl" selected>VS Code (WSL)</option><option value="vscode-win">VS Code (Windows)</option><option value="zed">Zed</option><option value="cursor-wsl">Cursor (WSL)</option><option value="copy">Copy path</option></select>
-<span class="mono root" title="repoRoot">{{.RepoRoot}}</span><button type="button" id="fb-copy" class="ghost">Copy feedback JSON</button>{{if .Viewer}}<button type="button" id="fb-retry" class="ghost" hidden>Retry saving</button>{{end}}</div><p id="fb-hint" class="fb-hint" hidden></p></header>
+<span class="mono root" title="repoRoot">{{.RepoRoot}}</span><button type="button" id="fb-copy" class="ghost">Copy feedback JSON</button>{{if .Viewer}}<button type="button" id="fb-retry" class="ghost" hidden>Retry saving</button>{{end}}</div><button type="button" id="fb-import-legacy" class="ghost" hidden>Import older feedback for this report</button><p id="fb-hint" class="fb-hint" hidden></p></header>
 <section class="summary" aria-labelledby="h-summary"><h2 id="h-summary" class="vh">Summary</h2><div class="tiles">
 {{range .Severities}}<div class="tile {{.Value}}"><span class="n">{{.Open}}</span><span class="l">{{.Label}} open</span></div>{{end}}
 <div class="tile all"><span class="n">{{.Open}}</span><span class="l">Open in total</span></div>

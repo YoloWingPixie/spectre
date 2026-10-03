@@ -1,11 +1,18 @@
 ---
 name: spectre-audit
-description: Write or resume evidence-based codebase audits with persistent project checkpoints, findings, and reader decisions. Build an interactive HTML report from report.json for local viewing, sharing, or a claude.ai artifact. Use when asked to audit, review, assess, or survey a codebase and produce or continue a report.
+description: Operate Spectre audit mode for a user. Investigate a codebase, write verified findings, present an interactive report, and read saved user decisions to continue the audit. Use when producing or resuming a structured codebase audit with user review and feedback.
 ---
 
 # Spectre audit mode
 
-Turns a `report.json` into one HTML page with severity and status filters, search, a "Fix first" list, per-area findings, and editor links for every file reference.
+You are the agent operating Spectre for the user. Investigate the project,
+write `report.json`, start the viewer, and present the review URL. The user
+reads your findings and records decisions and notes. Read that feedback
+before continuing the work within their instructions.
+
+Spectre turns your report into a page with severity and status filters,
+search, a "Fix first" list, per-area findings, and editor links. Initialization
+creates an empty report; you supply the findings and analysis.
 
 Tool location: the folder that holds this file. Below, `$AR` means that folder.
 
@@ -20,13 +27,51 @@ Do not use it for a quick answer in chat. Just answer.
 
 ## Workflow
 
-1. **Resume first.** Check the audited repository root for `.audit-report.json`. If present, run `spectre audit resume --project /path/to/project`. Read the checkpoint, report, and feedback before continuing. If absent, use `init` with the same `--project`. Add `--new` only for an explicitly separate audit. For persistence commands, checkpoint input, imports, and recovery, read `$AR/docs/resuming-audits.md`.
-2. **Investigate.** Read the code. Run the app or commands if you can. If `repositoryChanged` is true or unknown, revalidate affected evidence instead of assuming the checkpoint still proves it.
+1. **Resume first.** Check the audited repository root for `.audit-report.json`. If present, run `spectre audit resume --project /path/to/project`. Read the checkpoint, report, and feedback before continuing. If absent, use `init` with the same `--project`. Add `--new` only for an explicitly separate audit. For persistence commands, checkpoint input, imports, and recovery, read `$AR/resuming-audits.md`.
+2. **Delegate the checklist.** Use [the audit checklist](checklist.md) and the review structure below. Assign sections to sub-agents. If `repositoryChanged` is true or unknown, revalidate affected evidence instead of assuming the checkpoint still proves it.
 3. **Verify each finding.** Open the file and read the lines you cite. Run the command you quote. Drop anything you cannot confirm, or move it to `openQuestions`.
 4. **Write and checkpoint.** Edit the `paths.report` returned by resume. Preserve finding and option IDs. Field reference: `$AR/schema/report.schema.json`. Save a checkpoint after meaningful work and before handing control back; record completed work and next actions. Use the latest `projectRevision` to prevent overwriting another session. Read saved decisions as feedback, not authorization to change code.
-5. **Build.** `spectre audit build /path/from/resume/report.json --strict`. Fix every error and warning. Errors list the path to each bad field.
-6. **Look once.** Open the HTML (or screenshot it) at desktop and phone width. Fix what is visibly wrong. Do not loop.
-7. **Share.** For automatic local feedback, run `spectre audit view --project /path/to/project` in a persistent terminal session and give the printed URL. If the agent cannot keep a process running after its turn, give the developer that command to run in a second terminal. Otherwise give the built HTML path. To publish as a claude.ai artifact, publish the HTML file as is. It already meets the artifact page rules.
+5. **Validate.** Run `spectre audit build /path/from/resume/report.json --check --strict`. Fix every error and warning. Errors list the path to each bad field. For standalone delivery, also run the build without `--check` to write HTML.
+6. **Open the review.** Run `spectre audit view --project /path/to/project` in a persistent terminal session. Check that its printed URL loads. For standalone delivery, open the built HTML instead. Check desktop and phone width when preparing the presentation, and fix visible problems.
+7. **Present it to the user.** Give the actual URL or built HTML path, a short summary of the findings, and the decisions that need their input. Explain where feedback saves and ask the user to return when ready to continue. If you cannot keep a process running after your turn, give them the viewer command to run on their machine. For a requested claude.ai artifact, use the hosted feedback workflow below.
+8. **Continue from feedback.** When the user returns, run `spectre audit resume --project /path/to/project` again and read `feedback` and `feedbackReview`. Reconcile their notes with the report, preserve stable IDs, and checkpoint the next actions. Local viewer saves do not automatically create a new agent turn.
+
+## Review structure
+
+Use the checklist as the audit's coverage map. Assign each section to a
+reviewer sub-agent, with a bounded assignment and the relevant repository
+instructions. A reviewer must distinguish checks that apply from checks that
+do not apply and explain exclusions. Run assignments in batches when the
+available agent slots cannot cover all sections at once.
+
+For a large codebase, introduce topic managers when one reviewer cannot
+cover a topic across the relevant packages or services within its working
+context. Assign related checklist sections to each manager. Each manager
+then delegates reviews by code area to additional sub-agents and reconciles
+their results. Split further only where an area is still too large for a
+bounded review. Keep one owner for each section-and-code-area assignment,
+and respect the environment's concurrency and delegation limits.
+
+Give every reviewer the audit scope, its checklist sections, the code areas
+to inspect, and the required result:
+
+- Checks performed and coverage gaps.
+- Findings with file and line references, a concrete failure or consequence,
+  and reproduction steps or other evidence.
+- Applicable project requirements, uncertainty, and checks that could not run.
+- Non-applicable checks with a reason.
+
+Keep reviewer assignments read-only unless the user has authorized changes.
+Sub-agents return evidence to their manager or the lead agent; they do not
+write competing versions of `report.json`. Managers deduplicate related
+findings, resolve conflicting conclusions, and identify unreviewed boundaries
+between code areas. The lead verifies the combined findings, writes the report,
+records coverage and remaining work in the checkpoint, and presents it to the
+user. A checklist match alone is not a defect.
+
+If sub-agents are unavailable, report that limitation and work through the
+same assignments sequentially. Do not claim delegated review or complete
+coverage for work that did not run.
 
 ## Evidence standards
 
@@ -91,7 +136,7 @@ Write so a busy developer who is new to the project understands on first read.
 | Suboptimal contrast ratios in dark mode. | Links are navy on near-black (about 2:1). Night users cannot see them. |
 | RLS bypass in tests. | Tests run as the database superuser, so RLS (row-level security) is skipped. A broken policy still passes. |
 
-More examples: `$AR/docs/writing-guide.md`.
+More examples: `$AR/writing-guide.md`.
 
 ## Editor links
 

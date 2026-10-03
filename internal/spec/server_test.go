@@ -38,6 +38,23 @@ func newTestServer(t *testing.T) (*httptest.Server, string) {
 
 var noRedirect = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
+func TestScenarioIntroductionRemainsReviewable(t *testing.T) {
+	ts, dir := newTestServer(t)
+	if err := os.WriteFile(filepath.Join(dir, "scenarios.md"), []byte("# Scenarios\n\nIntroduction text.\n\n### S-01 · Introduction scenario\n\nA reviewer opens this scenario.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/id/S-01", "/scenarios/1", "/search?kind=scenario"} {
+		code, body := get(t, ts.URL+path)
+		if code != http.StatusOK || !strings.Contains(body, "Introduction scenario") {
+			t.Errorf("%s: status %d, missing scenario: %v", path, code, !strings.Contains(body, "Introduction scenario"))
+		}
+	}
+	_, body := get(t, ts.URL+"/scenarios/1")
+	if !strings.Contains(body, "Introduction text.") || !strings.Contains(body, "Accept") {
+		t.Fatal("introduction text or review controls missing")
+	}
+}
+
 func get(t *testing.T, u string) (int, string) {
 	t.Helper()
 	resp, err := noRedirect.Get(u)

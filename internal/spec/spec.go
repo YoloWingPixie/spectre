@@ -434,7 +434,8 @@ func (s *Spec) parseDoc(name, md, itemPrefix string) *Doc {
 	}
 	var secs []sec
 	if strings.TrimSpace(trimRule(pre)) != "" {
-		secs = append(secs, sec{title: "Introduction", units: []Unit{{MD: trimRule(pre)}}})
+		titles = append([]string{"Introduction"}, titles...)
+		bodies = append([]string{pre}, bodies...)
 	}
 	for i, t := range titles {
 		var units []Unit

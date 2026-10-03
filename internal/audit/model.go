@@ -10,6 +10,7 @@ type findingID string
 type optionID string
 type projectID string
 type auditID string
+type reportID string
 type severity string
 type findingStatus string
 type evidenceKind string
@@ -44,6 +45,7 @@ const (
 )
 
 type report struct {
+	ID            reportID       `json:"reportId,omitempty"`
 	Schema        string         `json:"$schema,omitempty"`
 	Title         string         `json:"title"`
 	Project       string         `json:"project"`

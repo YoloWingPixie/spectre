@@ -2,12 +2,14 @@
 // Claude is notified from the same change/blur handler that saves the field.
 var fbCopyBtn = document.getElementById("fb-copy");
 var fbHint = document.getElementById("fb-hint");
+var fbImportLegacy = document.getElementById("fb-import-legacy");
 var fbRetry = document.getElementById("fb-retry");
 var diskUrl = tools.dataset.feedbackUrl;
 var diskRevisions = {};
 var diskReady = false;
 var FB_REPORT = { title: tools.dataset.title, commit: tools.dataset.commit };
-var FB_LS_KEY = "audit-report:feedback:" + FB_REPORT.title + "@" + FB_REPORT.commit;
+var FB_LEGACY_KEY = "audit-report:feedback:" + FB_REPORT.title + "@" + FB_REPORT.commit;
+var FB_LS_KEY = "audit-report:feedback:v2:" + tools.dataset.reportId;
 var FB = { mode: "pending", db: null, comments: null, userId: null, canNotify: null, notifyOff: false };
 var fbStates = Object.create(null);
 
@@ -148,8 +150,8 @@ function applyDoc(st, doc) {
 
 // Saving
 
-function lsRead() {
-  try { return JSON.parse(localStorage.getItem(FB_LS_KEY) || "{}") || {}; } catch (err) { return {}; }
+function lsRead(key) {
+  try { return JSON.parse(localStorage.getItem(key || FB_LS_KEY) || "{}") || {}; } catch (err) { return {}; }
 }
 
 function writeDoc(st, doc) {
@@ -403,6 +405,27 @@ function wireFinding(st) {
   });
 }
 
+fbImportLegacy.addEventListener("click", function () {
+  var all = lsRead();
+  var legacy = lsRead(FB_LEGACY_KEY);
+  var imported = [];
+  Object.keys(legacy).forEach(function (id) {
+    var st = fbStates[id];
+    if (!st || all[id] || st.saved || st.saving || st.want || st.pendingEdits.length || !isEmptyContent(readUi(st)) || st.invalid) return;
+    all[id] = legacy[id];
+    imported.push(id);
+  });
+  try {
+    localStorage.setItem(FB_LS_KEY, JSON.stringify(all));
+  } catch (error) {
+    showHint("Could not import older feedback. Browser storage is unavailable; your current edits and older feedback are unchanged.");
+    return;
+  }
+  imported.forEach(function (id) { applyDoc(fbStates[id], all[id]); });
+  fbImportLegacy.hidden = true;
+  showHint("Older feedback imported. Existing decisions and current edits were kept. The original browser copy remains available.");
+});
+
 // Copy feedback JSON: the hand-off for local files.
 fbCopyBtn.addEventListener("click", function () {
   var docs = {};
@@ -503,6 +526,11 @@ FB.ready = diskUrl ? startDiskFeedback() : Promise.all([useCap("db"), useCap("co
       var all = lsRead();
       Object.keys(all).forEach(function (id) { if (fbStates[id] && all[id]) applyDoc(fbStates[id], all[id]); });
       showHint("Feedback is saved in this browser only. Use Copy feedback JSON to hand it to Claude.");
+      var legacy = lsRead(FB_LEGACY_KEY);
+      if (Object.keys(legacy).some(function (id) { return fbStates[id] && !all[id]; })) {
+        fbImportLegacy.hidden = false;
+        showHint("Older feedback shares this report title and commit. Import it only if it belongs to this report. Existing decisions and current edits will be kept.");
+      }
       return;
     }
     if (FB.canWrite === false) setReadOnly();
